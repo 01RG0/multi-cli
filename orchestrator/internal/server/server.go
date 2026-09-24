@@ -38,6 +38,7 @@ func (s *Server) ServeHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/messages", s.handleMessages)
+	mux.HandleFunc("/messages", s.handleMessages) // SDK compat: some versions omit /v1 prefix
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/ws", s.Hub.ServeWS)
 
