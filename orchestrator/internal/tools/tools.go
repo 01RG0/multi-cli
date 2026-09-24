@@ -13,11 +13,14 @@ import (
 )
 
 // ToolResult is the JSON-first result returned by every tool.
+// All fields are stable — agents parse this struct directly.
 type ToolResult struct {
-	ToolName string `json:"tool_name"`
-	OK       bool   `json:"ok"`
-	Output   string `json:"output,omitempty"`
-	Error    string `json:"error,omitempty"`
+	ToolName   string `json:"tool_name"`
+	OK         bool   `json:"ok"`
+	Output     string `json:"output,omitempty"`
+	Error      string `json:"error,omitempty"`
+	ExitCode   int    `json:"exit_code,omitempty"`   // process exit code (shell tool)
+	DurationMs int64  `json:"duration_ms,omitempty"` // wall-clock execution time
 }
 
 func (r ToolResult) String() string {
@@ -28,6 +31,8 @@ func (r ToolResult) String() string {
 // Tool is the common interface for all agent tools.
 type Tool interface {
 	Name() string
+	// Describe returns a one-line summary used for task routing decisions.
+	Describe() string
 	Run(ctx context.Context, input string) ToolResult
 }
 
@@ -49,7 +54,8 @@ func NewShellTool(cfg ShellConfig) *ShellTool {
 	return &ShellTool{cfg: cfg}
 }
 
-func (s *ShellTool) Name() string { return "shell" }
+func (s *ShellTool) Name() string    { return "shell" }
+func (s *ShellTool) Describe() string { return "Execute shell commands (allowlisted). No outbound network." }
 
 func (s *ShellTool) Run(ctx context.Context, input string) ToolResult {
 	// Allowlist check: reject if the command doesn't start with an allowed prefix
@@ -71,6 +77,7 @@ func (s *ShellTool) Run(ctx context.Context, input string) ToolResult {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	start := time.Now()
 	var cmd *exec.Cmd
 	if isWindows() {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", input)
@@ -78,10 +85,15 @@ func (s *ShellTool) Run(ctx context.Context, input string) ToolResult {
 		cmd = exec.CommandContext(ctx, "sh", "-c", input)
 	}
 	out, err := cmd.CombinedOutput()
+	dur := time.Since(start).Milliseconds()
 	if err != nil {
-		return ToolResult{ToolName: "shell", OK: false, Output: string(out), Error: err.Error()}
+		code := -1
+		if cmd.ProcessState != nil {
+			code = cmd.ProcessState.ExitCode()
+		}
+		return ToolResult{ToolName: "shell", OK: false, Output: string(out), Error: err.Error(), ExitCode: code, DurationMs: dur}
 	}
-	return ToolResult{ToolName: "shell", OK: true, Output: string(out)}
+	return ToolResult{ToolName: "shell", OK: true, Output: string(out), DurationMs: dur}
 }
 
 func isWindows() bool {
@@ -97,7 +109,8 @@ func NewFileTool(root string) *FileTool {
 	return &FileTool{root: root}
 }
 
-func (f *FileTool) Name() string { return "file" }
+func (f *FileTool) Name() string    { return "file" }
+func (f *FileTool) Describe() string { return "Read files within the allowed root directory." }
 
 func (f *FileTool) Run(ctx context.Context, input string) ToolResult {
 	// input is the relative path
@@ -135,7 +148,8 @@ func NewWebTool(cfg WebConfig) *WebTool {
 	}
 }
 
-func (w *WebTool) Name() string { return "web" }
+func (w *WebTool) Name() string    { return "web" }
+func (w *WebTool) Describe() string { return "Fetch a URL and return its body (max 1 MB)." }
 
 func (w *WebTool) Run(ctx context.Context, input string) ToolResult {
 	url := strings.TrimSpace(input)
@@ -159,20 +173,22 @@ func (w *WebTool) Run(ctx context.Context, input string) ToolResult {
 	}
 	req.Header.Set("User-Agent", "orchestrator/1.0")
 
+	start := time.Now()
 	resp, err := w.client.Do(req)
 	if err != nil {
-		return ToolResult{ToolName: "web", OK: false, Error: err.Error()}
+		return ToolResult{ToolName: "web", OK: false, Error: err.Error(), DurationMs: time.Since(start).Milliseconds()}
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB cap
+	dur := time.Since(start).Milliseconds()
 	if err != nil {
-		return ToolResult{ToolName: "web", OK: false, Error: err.Error()}
+		return ToolResult{ToolName: "web", OK: false, Error: err.Error(), DurationMs: dur}
 	}
 	if resp.StatusCode >= 400 {
-		return ToolResult{ToolName: "web", OK: false, Error: fmt.Sprintf("HTTP %d", resp.StatusCode), Output: string(body)}
+		return ToolResult{ToolName: "web", OK: false, Error: fmt.Sprintf("HTTP %d", resp.StatusCode), Output: string(body), DurationMs: dur}
 	}
-	return ToolResult{ToolName: "web", OK: true, Output: string(body)}
+	return ToolResult{ToolName: "web", OK: true, Output: string(body), DurationMs: dur}
 }
 
 // Registry maps tool names to Tool implementations.
@@ -194,4 +210,13 @@ func (r Registry) Run(ctx context.Context, name, input string) ToolResult {
 		return ToolResult{ToolName: name, OK: false, Error: fmt.Sprintf("unknown tool: %q", name)}
 	}
 	return t.Run(ctx, input)
+}
+
+// Capabilities returns a map of tool name → one-line description for routing.
+func (r Registry) Capabilities() map[string]string {
+	out := make(map[string]string, len(r))
+	for name, t := range r {
+		out[name] = t.Describe()
+	}
+	return out
 }
