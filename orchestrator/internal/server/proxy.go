@@ -13,14 +13,16 @@ import (
 )
 
 // proxyRequest mirrors the Anthropic /v1/messages request body.
+// System is any because the SDK sends either a plain string or
+// a []{"type":"text","text":"..."} content block array.
 type proxyRequest struct {
-	Model     string             `json:"model"`
-	Messages  []proxyMessage     `json:"messages"`
-	System    string             `json:"system,omitempty"`
-	Tools     []provider.Tool    `json:"tools,omitempty"`
-	MaxTokens int                `json:"max_tokens,omitempty"`
-	Stream    bool               `json:"stream,omitempty"`
-	Temperature float64          `json:"temperature,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []proxyMessage  `json:"messages"`
+	System      any             `json:"system,omitempty"` // string or []contentBlock
+	Tools       []provider.Tool `json:"tools,omitempty"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Stream      bool            `json:"stream,omitempty"`
+	Temperature float64         `json:"temperature,omitempty"`
 }
 
 type proxyMessage struct {
@@ -182,8 +184,8 @@ func toChatRequest(req proxyRequest) provider.ChatRequest {
 		Temperature: req.Temperature,
 		Tools:       req.Tools,
 	}
-	if req.System != "" {
-		cr.Messages = append(cr.Messages, provider.Message{Role: "system", Content: req.System})
+	if sys := extractText(req.System); sys != "" {
+		cr.Messages = append(cr.Messages, provider.Message{Role: "system", Content: sys})
 	}
 	for _, m := range req.Messages {
 		content := extractText(m.Content)
