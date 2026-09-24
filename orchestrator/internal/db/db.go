@@ -12,11 +12,26 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-	// SQLite settings for concurrent access
-	if _, err := db.Exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;"); err != nil {
-		return nil, fmt.Errorf("pragma: %w", err)
+	// Single connection — SQLite is not safe with concurrent writers.
+	// Must be set BEFORE any Exec so all PRAGMAs run on the same connection
+	// that will be reused for all future queries.
+	db.SetMaxOpenConns(1)
+
+	// Each PRAGMA in its own Exec — modernc.org/sqlite may stop after the
+	// first statement in a multi-statement string, leaving subsequent PRAGMAs unexecuted.
+	pragmas := []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA foreign_keys=ON",
+		"PRAGMA busy_timeout=5000",
 	}
-	db.SetMaxOpenConns(1) // SQLite WAL: single writer, multiple readers
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			// journal_mode=WAL returns "memory" on in-memory DBs — not an error
+			if p != "PRAGMA journal_mode=WAL" {
+				return nil, fmt.Errorf("%s: %w", p, err)
+			}
+		}
+	}
 	return db, nil
 }
 
