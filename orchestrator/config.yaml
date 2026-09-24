@@ -1,0 +1,81 @@
+providers:
+  - name: groq
+    type: openai_compat
+    base_url: https://api.groq.com/openai
+    api_key: ${GROQ_API_KEY}
+    model: qwen/qwen3.8-27b
+
+  - name: tokenharbor
+    type: openai_compat
+    base_url: ${TOKEN_HARBOR_BASE_URL}
+    api_key: ${TOKEN_HARBOR_API_KEY}
+    model: gpt-4o-mini
+
+  - name: codecraft
+    type: openai_compat
+    base_url: ${CODECRAFT_BASE_URL}
+    api_key: ${CODECRAFT_API_KEY}
+    model: gpt-4o-mini
+
+  - name: aihubmix
+    type: openai_compat
+    base_url: ${AIHUBMIX_BASE_URL}
+    api_key: ${AIHUBMIX_API_KEY}
+    model: gpt-4o-mini
+
+  - name: apmix
+    type: openai_compat
+    base_url: ${APMIX_BASE_URL}
+    api_key: ${APMIX_API_KEY}
+    model: deepseek-v4.1-flash-free
+
+  - name: dahl
+    type: openai_compat
+    base_url: ${DAHL_BASE_URL}
+    api_key: ${DAHL_API_KEY}
+    model: deepseek-ai/DeepSeek-V4-Flash-0731
+
+  - name: ollama
+    type: openai_compat
+    base_url: http://localhost:11434
+    api_key: ""
+    model: llama3.2
+
+  - name: anthropic
+    type: anthropic
+    base_url: ""
+    api_key: ${ANTHROPIC_API_KEY}
+    model: claude-opus-4-5
+
+  - name: bedrock
+    type: bedrock
+    region: ${AWS_REGION_NAME}
+    access_key: ${AWS_ACCESS_KEY_ID}
+    secret_key: ${AWS_SECRET_ACCESS_KEY}
+    model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
+
+# Primary provider + fallback order (groq + bedrock confirmed working)
+fallback_chain: [groq, apmix, bedrock, dahl, tokenharbor, codecraft, aihubmix, ollama, anthropic]
+
+max_retries: 3
+cooldown_seconds: 60
+
+# Proxy server (set port > 0 to enable; then set ANTHROPIC_BASE_URL=http://localhost:8080)
+proxy_port: 8080
+proxy_log: false
+
+# SQLite database path
+db_path: orchestrator.db
+
+# Worker pool concurrency
+concurrency: 4
+
+# Tool sandboxing
+tools:
+  shell:
+    timeout_seconds: 30
+    allowed_commands: [git, go, npm, python, node, curl, cat, ls]
+    deny_network: true
+  web:
+    timeout_seconds: 15
+    max_response_bytes: 1048576
