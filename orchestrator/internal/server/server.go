@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/01rg0/orchestrator/internal/config"
 	"github.com/01rg0/orchestrator/internal/hub"
+	"github.com/01rg0/orchestrator/internal/logbuf"
 	"github.com/01rg0/orchestrator/internal/mcp"
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
@@ -27,6 +29,7 @@ type Server struct {
 	db          *sql.DB
 	providerMap map[string]provider.Provider
 	mcpManager  *mcp.Manager // optional; nil when no MCP servers configured
+	logBuf      *logbuf.LogBuffer
 }
 
 // New creates a Server. g may be nil when memory is not needed (e.g. in tests).
@@ -34,6 +37,12 @@ func New(router *provider.Router, cfg *config.Config, g *memory.Graph) *Server {
 	h := hub.New()
 	go h.Run()
 	return &Server{router: router, cfg: cfg, Hub: h, graph: g}
+}
+
+// SetLogBuffer attaches a log buffer to the server, enabling GET /api/logs.
+// Must be called before Start().
+func (s *Server) SetLogBuffer(lb *logbuf.LogBuffer) {
+	s.logBuf = lb
 }
 
 // SetQueue attaches a live queue to the server, enabling /api/tasks and
@@ -124,12 +133,18 @@ func (s *Server) ServeHealth(w http.ResponseWriter, r *http.Request) {
 	s.handleHealth(w, r)
 }
 
+// ServeLogs is the exported handler for testing.
+func (s *Server) ServeLogs(w http.ResponseWriter, r *http.Request) {
+	s.handleAPILogs(w, r)
+}
+
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/messages", s.handleMessages)
 	mux.HandleFunc("/messages", s.handleMessages) // SDK compat
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/ws", s.Hub.ServeWS)
+	mux.HandleFunc("/api/logs", s.handleAPILogs)
 
 	// Per-agent provider routing: /agent/{agentId}/v1/messages
 	mux.HandleFunc("/agent/", s.handleAgentProxy)
@@ -204,6 +219,46 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"providers": len(s.cfg.FallbackChain),
 		"chain":     s.cfg.FallbackChain,
 	})
+}
+
+// handleAPILogs returns buffered log lines for a given task_id (or all tasks).
+// GET /api/logs?task_id=<id>&limit=<n>
+func (s *Server) handleAPILogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	taskID := r.URL.Query().Get("task_id")
+	limit := 200
+	if ls := r.URL.Query().Get("limit"); ls != "" {
+		if n, err := strconv.Atoi(ls); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	var entries []logbuf.LogEntry
+	if s.logBuf != nil {
+		if taskID != "" {
+			entries = s.logBuf.Get(taskID, limit)
+		} else {
+			entries = s.logBuf.All(limit)
+		}
+	}
+	if entries == nil {
+		entries = []logbuf.LogEntry{}
+	}
+	json.NewEncoder(w).Encode(entries)
 }
 
 // handleAPITasks returns queue stats as JSON.

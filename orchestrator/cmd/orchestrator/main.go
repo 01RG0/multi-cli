@@ -14,6 +14,7 @@ import (
 	"github.com/01rg0/orchestrator/internal/config"
 	"github.com/01rg0/orchestrator/internal/db"
 	"github.com/01rg0/orchestrator/internal/improvement"
+	"github.com/01rg0/orchestrator/internal/logbuf"
 	"github.com/01rg0/orchestrator/internal/mcp"
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
@@ -87,6 +88,9 @@ func main() {
 		srv := server.New(router, cfg, g)
 		srv.SetProviderMap(providerMap)
 
+		lb := logbuf.New(1000)
+		srv.SetLogBuffer(lb)
+
 		ctx, cancel := context.WithCancel(context.Background())
 
 		// Build the full CLI agent map (original + new agents).
@@ -145,7 +149,26 @@ func main() {
 					},
 				})
 
-				result, runErr := a.Run(hctx, task.Prompt)
+				onLine := func(agentID, taskID, stream, line string) {
+					ts := time.Now().UnixMilli()
+					lb.Append(logbuf.LogEntry{
+						AgentID: agentID,
+						TaskID:  taskID,
+						Stream:  stream,
+						Line:    line,
+						TS:      ts,
+					})
+					srv.Hub.Broadcast(map[string]any{
+						"type":     "log",
+						"agent_id": agentID,
+						"task_id":  taskID,
+						"stream":   stream,
+						"line":     line,
+						"ts":       ts,
+					})
+				}
+
+				result, runErr := a.RunStreaming(hctx, task.ID, task.Prompt, onLine)
 				latencyMs := time.Now().UnixMilli() - task.StartedAt
 
 				if runErr != nil {

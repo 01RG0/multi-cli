@@ -11,6 +11,14 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FAILED';
 export type ProviderHealth = 'green' | 'amber' | 'red';
 export type WsConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'simulated';
 
+// LogLine represents one streamed stdout/stderr line from a CLI agent task.
+export interface LogLine {
+  agentId: string;
+  stream: 'stdout' | 'stderr';
+  line: string;
+  ts: number; // Unix milliseconds
+}
+
 export interface AgentMetrics {
   tasksCompleted: number;
   successRate: number; // e.g. 98
@@ -137,6 +145,10 @@ export interface SwarmStore {
   isSimulating: boolean;
   isConnected: boolean;
 
+  // Streaming log state (per-task CLI output lines from RunStreaming)
+  logsByTask: Record<string, LogLine[]>;
+  selectedLogTaskId: string | null;
+
   // Actions - Selection & Filtering
   setSelectedAgentId: (id: string | null) => void;
   setSelectedAgent: (id: string | null) => void;
@@ -144,9 +156,14 @@ export interface SwarmStore {
   setActiveViewFilter: (filter: ViewFilter) => void;
   setFilter: (filter: ViewFilter) => void;
 
-  // Actions - Logs
+  // Actions - Logs (general system log)
   addLog: (entry: Omit<LogEntry, 'id' | 'timestamp'> & { timestamp?: string; id?: string }) => void;
   clearLogs: () => void;
+
+  // Actions - Streaming logs (per-task CLI output)
+  addLogLine: (taskId: string, line: LogLine) => void;
+  getLogsForTask: (taskId: string) => LogLine[];
+  setSelectedLogTaskId: (id: string | null) => void;
 
   // Actions - Tasks
   addTask: (task: Partial<Task> & { prompt: string }) => void;
@@ -1125,6 +1142,26 @@ class SwarmWebSocketEngine {
         return { logs: [...state.logs, entry].slice(-300) };
       }
 
+      // Streaming CLI output from RunStreaming — keyed by task_id
+      if (type === 'log' && payload.task_id !== undefined) {
+        const taskId = payload.task_id as string;
+        const logLine: LogLine = {
+          agentId: (payload.agent_id as string) || '',
+          stream: (payload.stream as 'stdout' | 'stderr') || 'stdout',
+          line: (payload.line as string) || '',
+          ts: (payload.ts as number) || Date.now(),
+        };
+        const prev = state.logsByTask[taskId] || [];
+        return {
+          logsByTask: {
+            ...state.logsByTask,
+            [taskId]: [...prev, logLine].slice(-500),
+          },
+          // Auto-select the first task that starts streaming
+          selectedLogTaskId: state.selectedLogTaskId ?? taskId,
+        };
+      }
+
       if (type === 'stats' && payload.stats && typeof payload.stats === 'object') {
         const s = payload.stats as Partial<SystemStats>;
         return { systemStats: { ...state.systemStats, ...s } };
@@ -1200,6 +1237,10 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
     isSimulating: true,
     isConnected: true,
 
+    // Streaming log initial state
+    logsByTask: {},
+    selectedLogTaskId: null,
+
     // Selection & Filter Actions
     setSelectedAgentId: (id: string | null) => {
       if (typeof localStorage !== 'undefined' && id) localStorage.setItem('ultron_selectedAgent', id);
@@ -1228,6 +1269,23 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
         ].slice(-300),
       })),
     clearLogs: () => set({ logs: [] }),
+
+    // Actions - Streaming logs (per-task CLI output)
+    addLogLine: (taskId: string, line: LogLine) =>
+      set((state) => {
+        const prev = state.logsByTask[taskId] || [];
+        return {
+          logsByTask: {
+            ...state.logsByTask,
+            [taskId]: [...prev, line].slice(-500),
+          },
+          selectedLogTaskId: state.selectedLogTaskId ?? taskId,
+        };
+      }),
+    getLogsForTask: (taskId: string) => {
+      return get().logsByTask[taskId] || [];
+    },
+    setSelectedLogTaskId: (id: string | null) => set({ selectedLogTaskId: id }),
 
     // Task Actions
     addTask: (task) => {

@@ -1,16 +1,24 @@
 package agent
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
+
+// LineCallback is called for each line of output produced by RunStreaming.
+// agentID is the agent name, taskID is the task being executed,
+// stream is "stdout" or "stderr", and line is the text (ANSI stripped).
+type LineCallback func(agentID, taskID, stream, line string)
 
 // CLIAgent dispatches tasks to a named CLI sub-agent binary.
 type CLIAgent struct {
@@ -97,6 +105,63 @@ func (a *CLIAgent) Run(ctx context.Context, prompt string) (string, error) {
 		return stripANSI(buf.String()), fmt.Errorf("agent %s: %w", a.name, err)
 	}
 	return strings.TrimSpace(stripANSI(buf.String())), nil
+}
+
+// RunStreaming dispatches prompt to the CLI binary and calls onLine for each line
+// written to stdout or stderr in real time. It collects all lines into a slice,
+// waits for process exit, and returns the trimmed combined output.
+// Run() continues to work unchanged.
+func (a *CLIAgent) RunStreaming(ctx context.Context, taskID, prompt string, onLine LineCallback) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.timeout)
+	defer cancel()
+
+	argv := append(a.args, prompt)
+	cmd := exec.CommandContext(ctx, a.binary, argv...)
+	cmd.Env = proxyEnv(a.name)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("agent %s: stdout pipe: %w", a.name, err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return "", fmt.Errorf("agent %s: stderr pipe: %w", a.name, err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("agent %s: start: %w", a.name, err)
+	}
+
+	var (
+		mu       sync.Mutex
+		allLines []string
+		wg       sync.WaitGroup
+	)
+
+	scanPipe := func(r io.Reader, stream string) {
+		defer wg.Done()
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			line := stripANSI(scanner.Text())
+			if onLine != nil {
+				onLine(a.name, taskID, stream, line)
+			}
+			mu.Lock()
+			allLines = append(allLines, line)
+			mu.Unlock()
+		}
+	}
+
+	wg.Add(2)
+	go scanPipe(stdoutPipe, "stdout")
+	go scanPipe(stderrPipe, "stderr")
+	wg.Wait()
+
+	if err := cmd.Wait(); err != nil {
+		combined := strings.Join(allLines, "\n")
+		return combined, fmt.Errorf("agent %s: %w", a.name, err)
+	}
+	return strings.TrimSpace(strings.Join(allLines, "\n")), nil
 }
 
 // Available reports whether the binary can be found in PATH.
