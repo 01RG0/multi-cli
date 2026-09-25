@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"time"
 
@@ -11,6 +13,9 @@ import (
 	"github.com/01rg0/orchestrator/internal/hub"
 	"github.com/01rg0/orchestrator/internal/provider"
 )
+
+//go:embed all:dist
+var distFS embed.FS
 
 type Server struct {
 	router     *provider.Router
@@ -41,6 +46,12 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/messages", s.handleMessages) // SDK compat: some versions omit /v1 prefix
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/ws", s.Hub.ServeWS)
+
+	// Serve embedded frontend (built dist/)
+	stripped, err := fs.Sub(distFS, "dist")
+	if err == nil {
+		mux.Handle("/", http.FileServer(http.FS(stripped)))
+	}
 
 	addr := fmt.Sprintf(":%d", s.cfg.ProxyPort)
 	s.httpServer = &http.Server{
