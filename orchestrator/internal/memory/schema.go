@@ -78,6 +78,13 @@ CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(
 CREATE TRIGGER IF NOT EXISTS episodes_ai AFTER INSERT ON episodes BEGIN
     INSERT INTO episodes_fts(rowid, id, agent_id, content) VALUES (new.rowid, new.id, new.agent_id, new.content);
 END;
+
+-- Core memory: a single mutable scratchpad row
+CREATE TABLE IF NOT EXISTS core_memory (
+    id         INTEGER PRIMARY KEY CHECK(id=1),
+    content    TEXT    NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
 `)
 	return err
 }

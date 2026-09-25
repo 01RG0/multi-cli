@@ -8,9 +8,14 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
+	"github.com/01rg0/orchestrator/internal/agent"
 	"github.com/01rg0/orchestrator/internal/config"
+	"github.com/01rg0/orchestrator/internal/db"
+	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
+	"github.com/01rg0/orchestrator/internal/queue"
 	"github.com/01rg0/orchestrator/internal/server"
 )
 
@@ -33,6 +38,24 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	// Open SQLite database (shared by queue and memory graph).
+	database, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("db: %v", err)
+	}
+	defer database.Close()
+
+	// Migrate queue schema.
+	if err := db.Migrate(database); err != nil {
+		log.Fatalf("db migrate: %v", err)
+	}
+
+	// Migrate memory schema and construct the graph.
+	if err := memory.Migrate(database); err != nil {
+		log.Fatalf("memory migrate: %v", err)
+	}
+	g := memory.New(database)
+
 	providerMap := buildProviders(cfg)
 
 	if len(cfg.FallbackChain) == 0 {
@@ -51,9 +74,66 @@ func main() {
 	router := provider.NewRouter(primary, fallbacks, cfg.MaxRetries, cfg.CooldownSeconds)
 
 	if serve || cfg.ProxyPort > 0 {
-		srv := server.New(router, cfg)
+		srv := server.New(router, cfg, g)
 		fmt.Printf("Proxy listening on :%d (chain: %v)\n", cfg.ProxyPort, cfg.FallbackChain)
 		fmt.Printf("Set ANTHROPIC_BASE_URL=http://localhost:%d to route Claude Code through this proxy.\n", cfg.ProxyPort)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Build the known CLI agent map.
+		agentNames := []string{
+			"opencode", "codex", "vibe", "agy", "grok",
+			"kilo", "cline", "researcher", "debugger", "jules", "cursor",
+		}
+		agents := make(map[string]*agent.CLIAgent, len(agentNames))
+		for _, name := range agentNames {
+			agents[name] = agent.New(name, name, 5*time.Minute)
+		}
+
+		// Worker handler: pick agent, run prompt, write episode.
+		handler := func(hctx context.Context, task queue.Task) (string, error) {
+			agentKey := task.Type
+			if agentKey == "" {
+				agentKey = task.AgentID
+			}
+			a, ok := agents[agentKey]
+			if !ok {
+				a = agents["opencode"]
+			}
+
+			result, runErr := a.Run(hctx, task.Prompt)
+
+			// Log episode regardless of success or failure.
+			epAgentID := task.AgentID
+			if epAgentID == "" {
+				epAgentID = task.Type
+			}
+			var epContent string
+			if runErr != nil {
+				epContent = runErr.Error()
+			} else {
+				epContent = result
+			}
+			if _, epErr := g.AppendEpisode(context.Background(), memory.Episode{
+				AgentID: epAgentID,
+				Kind:    "task",
+				Content: epContent,
+			}); epErr != nil {
+				log.Printf("memory: task episode: %v", epErr)
+			}
+
+			return result, runErr
+		}
+
+		// Wire queue and worker pool.
+		q := queue.New(database)
+		concurrency := cfg.Concurrency
+		if concurrency <= 0 {
+			concurrency = 4
+		}
+		wp := queue.NewWorkerPool(concurrency, q, handler)
+		go wp.Start(ctx)
 
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -66,6 +146,7 @@ func main() {
 
 		<-quit
 		fmt.Println("\nShutting down...")
+		cancel()
 		srv.Shutdown(context.Background())
 		return
 	}
