@@ -369,8 +369,6 @@ export interface UseOrchestatorChatReturn {
   sessions: ChatSession[];
   activeSessionId: string | null;
   isLoading: boolean;
-  selectedAgentId: string;
-  setSelectedAgentId: (id: string) => void;
   sendMessage: (text: string) => Promise<void>;
   startNewSession: () => void;
   selectSession: (id: string) => void;
@@ -381,7 +379,6 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
   const [sessions, setSessions]             = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading]           = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState('opencode');
 
   // Anthropic API conversation history — mutated in-place inside sendMessage
   const conversationRef = useRef<ApiMessage[]>([]);
@@ -401,9 +398,9 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
         if (!live) return m;
         const content =
           live.status === 'completed'
-            ? `Task #${m.taskId} completed`
+            ? m.content.replace(/^ULTRON dispatched →/, 'ULTRON completed →')
             : live.status === 'failed'
-              ? `Task #${m.taskId} failed`
+              ? m.content.replace(/^ULTRON dispatched →/, 'ULTRON failed →')
               : m.content;
         return { ...m, content, status: live.status === 'completed' ? 'done' : live.status === 'failed' ? 'error' : 'streaming' };
       }),
@@ -421,8 +418,8 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
     const id = uid();
     const session: ChatSession = {
       id,
-      title: `Session ${new Date().toLocaleTimeString()}`,
-      agentId: 'opencode',
+      title: `New conversation`,
+      agentId: 'ultron',
       status: 'idle',
       lastMessage: '',
       updatedAt: Date.now(),
@@ -461,6 +458,15 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
         ...conversationRef.current,
         { role: 'user', content: text.trim() },
       ];
+
+      // Auto-title session from first user message (first 50 chars)
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId && s.title === 'New conversation'
+            ? { ...s, title: text.trim().slice(0, 50) + (text.trim().length > 50 ? '…' : ''), updatedAt: Date.now() }
+            : s,
+        ),
+      );
 
       setIsLoading(true);
 
@@ -592,7 +598,7 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
                           id:        taskCardId,
                           key:       taskCardId,
                           role:      'task_card',
-                          content:   `Dispatched task #${taskId} to ${agentIdVal}: ${promptVal.slice(0, 60)}${promptVal.length > 60 ? '…' : ''}`,
+                          content:   `ULTRON dispatched → ${agentIdVal}: ${promptVal.slice(0, 60)}${promptVal.length > 60 ? '…' : ''}`,
                           agentId:   agentIdVal,
                           taskId,
                           timestamp: Date.now(),
@@ -638,8 +644,6 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
     sessions,
     activeSessionId,
     isLoading,
-    selectedAgentId,
-    setSelectedAgentId,
     sendMessage,
     startNewSession,
     selectSession,
