@@ -98,8 +98,12 @@ func (g *Graph) upsertVecNode(ctx context.Context, nodeID string, emb []float32)
 }
 
 // UpsertNode inserts or updates a node.
-// Order: 1) exact label+type match, 2) embedding-similarity dedup (threshold 0.85),
-// 3) insert new node. Embedding is computed via Ollama (soft-fail on error).
+// Dedup order (Step 7):
+//  1. Exact label+type match — fast, no embedding needed.
+//  2. Embedding-similarity dedup — cosine similarity > 0.85 (only when Ollama available).
+//  3. Insert new node.
+//
+// Embedding is computed via Ollama nomic-embed-text (soft-fail: nil when unreachable).
 func (g *Graph) UpsertNode(ctx context.Context, n Node) (string, error) {
 	if n.ID == "" {
 		n.ID = uniqueID("n")
