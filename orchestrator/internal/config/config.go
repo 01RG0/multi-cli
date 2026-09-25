@@ -46,6 +46,11 @@ type Config struct {
 	DBPath          string           `yaml:"db_path"`
 	Concurrency     int              `yaml:"concurrency"`
 	Tools           ToolsConfig      `yaml:"tools"`
+
+	// Episode cleanup (used by improvement.EpisodeCleanup)
+	EpisodeCleanupIntervalSecs int `yaml:"episode_cleanup_interval_secs"` // default 3600
+	EpisodeMaxRows             int `yaml:"episode_max_rows"`               // default 10000
+	EpisodeMaxAgeDays          int `yaml:"episode_max_age_days"`           // default 90
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)
@@ -90,6 +95,15 @@ func Load(path string) (*Config, error) {
 	}
 	if len(cfg.Tools.Shell.AllowedCommands) == 0 {
 		cfg.Tools.Shell.AllowedCommands = []string{"git", "go", "npm", "python", "node", "curl"}
+	}
+	if cfg.EpisodeCleanupIntervalSecs == 0 {
+		cfg.EpisodeCleanupIntervalSecs = 3600
+	}
+	if cfg.EpisodeMaxRows == 0 {
+		cfg.EpisodeMaxRows = 10000
+	}
+	if cfg.EpisodeMaxAgeDays == 0 {
+		cfg.EpisodeMaxAgeDays = 90
 	}
 	return &cfg, nil
 }
