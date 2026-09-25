@@ -7,6 +7,7 @@ import LiveFeed from './components/LiveFeed'
 import StatsPanel from './components/StatsPanel'
 import { FloatingDock, buildDockItems } from './components/FloatingDock'
 import ProviderCard from './components/ProviderCard'
+import { SparklesHero } from './components/SparklesCore'
 
 const WS_URL = import.meta.env.VITE_WS_URL ??
   `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
@@ -130,6 +131,9 @@ export default function App() {
             </a>
           </div>
         </motion.header>
+
+        {/* Sparkles hero strip */}
+        <SparklesHero />
 
         {/* Floating Dock */}
         <div style={{
