@@ -32,7 +32,7 @@ type ShellToolConfig struct {
 }
 
 type WebToolConfig struct {
-	TimeoutSeconds  int `yaml:"timeout_seconds"`
+	TimeoutSeconds   int `yaml:"timeout_seconds"`
 	MaxResponseBytes int `yaml:"max_response_bytes"`
 }
 
@@ -46,6 +46,18 @@ type Config struct {
 	DBPath          string           `yaml:"db_path"`
 	Concurrency     int              `yaml:"concurrency"`
 	Tools           ToolsConfig      `yaml:"tools"`
+
+	// EnableWorkers starts the queue worker pool and DB migrations.
+	EnableWorkers bool `yaml:"enable_workers"`
+
+	// Memory / graph settings
+	MemoryEnabled      bool `yaml:"memory_enabled"`
+	RetrievalK         int  `yaml:"retrieval_k"`
+	CoreMemoryMaxBytes int  `yaml:"core_memory_max_bytes"`
+
+	// AgentProviders maps agent names to ordered provider preference lists.
+	// Empty or missing entry means use the global FallbackChain.
+	AgentProviders map[string][]string `yaml:"agent_providers"`
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)
@@ -90,6 +102,12 @@ func Load(path string) (*Config, error) {
 	}
 	if len(cfg.Tools.Shell.AllowedCommands) == 0 {
 		cfg.Tools.Shell.AllowedCommands = []string{"git", "go", "npm", "python", "node", "curl"}
+	}
+	if cfg.RetrievalK == 0 {
+		cfg.RetrievalK = 5
+	}
+	if cfg.CoreMemoryMaxBytes == 0 {
+		cfg.CoreMemoryMaxBytes = 4096
 	}
 	return &cfg, nil
 }

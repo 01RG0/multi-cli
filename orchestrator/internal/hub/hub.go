@@ -18,6 +18,11 @@ type Hub struct {
 	mu      sync.RWMutex
 	clients map[*client]bool
 	send    chan []byte
+	// OnConnect, if non-nil, is called when a new client connects.
+	// The returned bytes (JSON) are sent only to that client as an init snapshot.
+	// Must be set before any clients connect; reads are protected by the client
+	// registration lock, but this field itself should be set once before Start().
+	OnConnect func() []byte
 }
 
 type client struct {
@@ -72,7 +77,18 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	c := &client{conn: conn, send: make(chan []byte, 64)}
 	h.mu.Lock()
 	h.clients[c] = true
+	onConnect := h.OnConnect // capture under lock
 	h.mu.Unlock()
+
+	// Send init snapshot to this client only, if provided.
+	if onConnect != nil {
+		if payload := onConnect(); len(payload) > 0 {
+			select {
+			case c.send <- payload:
+			default:
+			}
+		}
+	}
 
 	// writer goroutine
 	go func() {

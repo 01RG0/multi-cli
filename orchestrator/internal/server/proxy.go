@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
 )
 
@@ -18,7 +20,7 @@ import (
 type proxyRequest struct {
 	Model       string          `json:"model"`
 	Messages    []proxyMessage  `json:"messages"`
-	System      any             `json:"system,omitempty"` // string or []contentBlock
+	System      any             `json:"system,omitempty"`
 	Tools       []provider.Tool `json:"tools,omitempty"`
 	MaxTokens   int             `json:"max_tokens,omitempty"`
 	Stream      bool            `json:"stream,omitempty"`
@@ -27,7 +29,7 @@ type proxyRequest struct {
 
 type proxyMessage struct {
 	Role    string `json:"role"`
-	Content any    `json:"content"` // string or []contentBlock
+	Content any    `json:"content"`
 }
 
 type contentBlock struct {
@@ -37,14 +39,14 @@ type contentBlock struct {
 
 // proxyResponse mirrors the Anthropic /v1/messages response body.
 type proxyResponse struct {
-	ID           string          `json:"id"`
-	Type         string          `json:"type"`
-	Role         string          `json:"role"`
-	Content      []contentBlock  `json:"content"`
-	Model        string          `json:"model"`
-	StopReason   string          `json:"stop_reason"`
-	StopSequence *string         `json:"stop_sequence"`
-	Usage        proxyUsage      `json:"usage"`
+	ID           string         `json:"id"`
+	Type         string         `json:"type"`
+	Role         string         `json:"role"`
+	Content      []contentBlock `json:"content"`
+	Model        string         `json:"model"`
+	StopReason   string         `json:"stop_reason"`
+	StopSequence *string        `json:"stop_sequence"`
+	Usage        proxyUsage     `json:"usage"`
 }
 
 type proxyUsage struct {
@@ -52,7 +54,33 @@ type proxyUsage struct {
 	OutputTokens int `json:"output_tokens"`
 }
 
+// handleMessages proxies through the global router.
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	s.proxyWithRouter(w, r, s.router, r.Header.Get("X-Agent-ID"))
+}
+
+// handleAgentProxy handles /agent/{agentId}/v1/messages and /agent/{agentId}/messages,
+// routing through a per-agent provider chain if configured.
+func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request) {
+	// Path: /agent/{agentId}/v1/messages  or  /agent/{agentId}/messages
+	path := strings.TrimPrefix(r.URL.Path, "/agent/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+	agentID := parts[0]
+	// Must end with "messages"
+	if parts[len(parts)-1] != "messages" {
+		http.NotFound(w, r)
+		return
+	}
+	agentRouter := s.buildAgentRouter(agentID)
+	s.proxyWithRouter(w, r, agentRouter, agentID)
+}
+
+// proxyWithRouter is the shared core used by handleMessages and handleAgentProxy.
+func (s *Server) proxyWithRouter(w http.ResponseWriter, r *http.Request, rtr *provider.Router, agentID string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -71,17 +99,38 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.cfg.ProxyLog {
-		log.Printf("proxy: model=%s stream=%v messages=%d", req.Model, req.Stream, len(req.Messages))
+		log.Printf("proxy: agent=%s model=%s stream=%v messages=%d", agentID, req.Model, req.Stream, len(req.Messages))
 	}
 
 	chatReq := toChatRequest(req)
 
+	// Extract last user message text for memory retrieval and episode logging.
+	var lastUserText string
+	for i := len(chatReq.Messages) - 1; i >= 0; i-- {
+		if chatReq.Messages[i].Role == "user" {
+			lastUserText = chatReq.Messages[i].Content
+			break
+		}
+	}
+
+	// Inject memory context into system prompt when memory is enabled.
+	if s.cfg.MemoryEnabled && s.graph != nil && lastUserText != "" {
+		memBlock := s.buildMemoryBlock(r.Context(), lastUserText)
+		if memBlock != "" {
+			if len(chatReq.Messages) > 0 && chatReq.Messages[0].Role == "system" {
+				chatReq.Messages[0].Content += "\n\n" + memBlock
+			} else {
+				chatReq.Messages = append([]provider.Message{{Role: "system", Content: memBlock}}, chatReq.Messages...)
+			}
+		}
+	}
+
 	if req.Stream {
-		s.handleStream(w, r, chatReq, req.Model)
+		s.handleStream(w, r, chatReq, req.Model, rtr)
 		return
 	}
 
-	resp, err := s.router.Complete(r.Context(), chatReq)
+	resp, err := rtr.Complete(r.Context(), chatReq)
 	if err != nil {
 		code := http.StatusBadGateway
 		var apiErr *provider.APIError
@@ -90,6 +139,22 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, err.Error(), code)
 		return
+	}
+
+	// Async episode write — must not block the HTTP response.
+	if s.graph != nil {
+		assistantText := resp.Content
+		go func() {
+			epCtx := context.Background()
+			compact, _ := json.Marshal(map[string]string{"user": lastUserText, "assistant": assistantText})
+			if _, err := s.graph.AppendEpisode(epCtx, memory.Episode{
+				AgentID: agentID,
+				Kind:    "message",
+				Content: string(compact),
+			}); err != nil {
+				log.Printf("memory: episode write: %v", err)
+			}
+		}()
 	}
 
 	out := proxyResponse{
@@ -109,8 +174,8 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(out)
 }
 
-func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq provider.ChatRequest, model string) {
-	ch, err := s.router.Stream(r.Context(), chatReq)
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq provider.ChatRequest, model string, rtr *provider.Router) {
+	ch, err := rtr.Stream(r.Context(), chatReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -128,7 +193,6 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 
-	// message_start
 	writeSSE(w, flusher, map[string]any{
 		"type": "message_start",
 		"message": map[string]any{
@@ -137,13 +201,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 			"stop_reason": nil, "usage": map[string]int{"input_tokens": 0, "output_tokens": 0},
 		},
 	})
-
-	// content_block_start
 	writeSSE(w, flusher, map[string]any{
 		"type": "content_block_start", "index": 0,
 		"content_block": map[string]string{"type": "text", "text": ""},
 	})
-
 	writeSSE(w, flusher, map[string]any{"type": "ping"})
 
 	for chunk := range ch {
@@ -163,7 +224,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 
 	writeSSE(w, flusher, map[string]any{"type": "content_block_stop", "index": 0})
 	writeSSE(w, flusher, map[string]any{
-		"type": "message_delta",
+		"type":  "message_delta",
 		"delta": map[string]string{"stop_reason": "end_turn", "stop_sequence": ""},
 		"usage": map[string]int{"output_tokens": 0},
 	})
@@ -223,6 +284,48 @@ func mapStopReason(reason string) string {
 	default:
 		return "end_turn"
 	}
+}
+
+// buildMemoryBlock assembles the <memory> XML block to inject into system prompt.
+func (s *Server) buildMemoryBlock(ctx context.Context, query string) string {
+	k := s.cfg.RetrievalK
+	if k <= 0 {
+		k = 5
+	}
+
+	var coreContent string
+	if core, err := s.graph.ReadCore(ctx); err == nil {
+		coreContent = core.Content
+	} else {
+		log.Printf("memory: read core: %v", err)
+	}
+
+	results, err := s.graph.Search(ctx, query, k)
+	if err != nil {
+		log.Printf("memory: search: %v", err)
+	}
+
+	if coreContent == "" && len(results) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<memory>\n")
+	if coreContent != "" {
+		sb.WriteString("<core>")
+		sb.WriteString(coreContent)
+		sb.WriteString("</core>\n")
+	}
+	sb.WriteString("<retrieved>\n")
+	for _, r := range results {
+		sb.WriteString(r.Node.Label)
+		sb.WriteString(": ")
+		sb.WriteString(r.Node.Type)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("</retrieved>\n")
+	sb.WriteString("</memory>")
+	return sb.String()
 }
 
 func isAPIError(err error, target **provider.APIError) bool {
