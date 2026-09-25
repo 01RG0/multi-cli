@@ -70,6 +70,11 @@ db_path: orchestrator.db
 # Worker pool concurrency
 concurrency: 4
 
+# Memory / knowledge-graph settings
+memory_enabled: false       # set to true to inject retrieved context into system prompt
+retrieval_k: 5              # max nodes to retrieve per query
+core_memory_max_bytes: 4096 # max size of the core memory scratchpad
+
 # Tool sandboxing
 tools:
   shell:
