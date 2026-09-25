@@ -65,9 +65,9 @@ func main() {
 	router := provider.NewRouter(primary, fallbacks, cfg.MaxRetries, cfg.CooldownSeconds)
 
 	if serve || cfg.ProxyPort > 0 {
-		srv := server.New(router, cfg)
+		// Memory graph: non-nil only when workers (and DB) are enabled.
+		var g *memory.Graph
 
-		// ctx is cancelled on SIGTERM/SIGINT so goroutines shut down cleanly.
 		ctx, cancel := context.WithCancel(context.Background())
 
 		if cfg.EnableWorkers {
@@ -81,9 +81,11 @@ func main() {
 			if err := memory.Migrate(sqlDB); err != nil {
 				log.Fatalf("memory migrate: %v", err)
 			}
+			g = memory.New(sqlDB)
 
 			q := queue.New(sqlDB)
 
+			srv := server.New(router, cfg, g)
 			// Wire queue to server for /api/tasks, /api/tasks/enqueue, and init snapshot.
 			srv.SetQueue(q)
 
@@ -93,9 +95,18 @@ func main() {
 			loop := improvement.NewLoop(obs, ref, 30*time.Second)
 			go loop.Start(ctx)
 
-			// Task handler: dispatches to the CLI agent named by task.AgentID.
-			handler := func(ctx context.Context, t queue.Task) (string, error) {
-				// Broadcast task.started so connected dashboards see it live.
+			// Build known CLI agent map.
+			agentNames := []string{
+				"opencode", "codex", "vibe", "agy", "grok",
+				"kilo", "cline", "researcher", "debugger", "jules", "cursor",
+			}
+			agents := make(map[string]*agent.CLIAgent, len(agentNames))
+			for _, name := range agentNames {
+				agents[name] = agent.New(name, name, 5*time.Minute)
+			}
+
+			// Task handler: dispatch to CLI agent, emit WS events, log episode.
+			handler := func(hctx context.Context, t queue.Task) (string, error) {
 				srv.Hub.Broadcast(map[string]any{
 					"type": "task_update",
 					"task": map[string]any{
@@ -105,10 +116,35 @@ func main() {
 					},
 				})
 
-				a := agent.New(t.AgentID, t.AgentID, 5*time.Minute)
-				result, runErr := a.Run(ctx, t.Prompt)
+				agentKey := t.Type
+				if agentKey == "" {
+					agentKey = t.AgentID
+				}
+				a, ok := agents[agentKey]
+				if !ok {
+					a = agents["opencode"]
+				}
 
+				result, runErr := a.Run(hctx, t.Prompt)
 				latencyMs := time.Now().UnixMilli() - t.StartedAt
+
+				epAgentID := t.AgentID
+				if epAgentID == "" {
+					epAgentID = t.Type
+				}
+				var epContent string
+				if runErr != nil {
+					epContent = runErr.Error()
+				} else {
+					epContent = result
+				}
+				if _, epErr := g.AppendEpisode(context.Background(), memory.Episode{
+					AgentID: epAgentID,
+					Kind:    "task",
+					Content: epContent,
+				}); epErr != nil {
+					log.Printf("memory: task episode: %v", epErr)
+				}
 
 				if runErr != nil {
 					obs.Record(improvement.Observation{
@@ -121,9 +157,9 @@ func main() {
 					srv.Hub.Broadcast(map[string]any{
 						"type": "task_update",
 						"task": map[string]any{
-							"id":      t.ID,
-							"status":  string(queue.StatusFailed),
-							"error":   runErr.Error(),
+							"id":     t.ID,
+							"status": string(queue.StatusFailed),
+							"error":  runErr.Error(),
 						},
 					})
 					return "", runErr
@@ -146,17 +182,41 @@ func main() {
 				return result, nil
 			}
 
-			wp := queue.NewWorkerPool(cfg.Concurrency, q, handler)
+			concurrency := cfg.Concurrency
+			if concurrency <= 0 {
+				concurrency = 4
+			}
+			wp := queue.NewWorkerPool(concurrency, q, handler)
 			go wp.Start(ctx)
 
-			log.Printf("workers: %d goroutines draining queue (db=%s)", cfg.Concurrency, cfg.DBPath)
+			log.Printf("workers: %d goroutines draining queue (db=%s)", concurrency, cfg.DBPath)
+
+			fmt.Printf("Proxy listening on :%d (chain: %v)\n", cfg.ProxyPort, cfg.FallbackChain)
+			fmt.Printf("Set ANTHROPIC_BASE_URL=http://localhost:%d to route Claude Code through this proxy.\n", cfg.ProxyPort)
+			fmt.Printf("Workers enabled: queue at %s, concurrency=%d\n", cfg.DBPath, concurrency)
+
+			quit := make(chan os.Signal, 1)
+			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+			go func() {
+				if err := srv.Start(); err != nil {
+					log.Printf("server stopped: %v", err)
+				}
+			}()
+
+			<-quit
+			fmt.Println("\nShutting down...")
+			cancel() // stop worker pool and improvement loop goroutines
+			srv.Shutdown(context.Background())
+			return
 		}
+
+		// Workers disabled path: still serve with nil graph.
+		defer cancel()
+		srv := server.New(router, cfg, g)
 
 		fmt.Printf("Proxy listening on :%d (chain: %v)\n", cfg.ProxyPort, cfg.FallbackChain)
 		fmt.Printf("Set ANTHROPIC_BASE_URL=http://localhost:%d to route Claude Code through this proxy.\n", cfg.ProxyPort)
-		if cfg.EnableWorkers {
-			fmt.Printf("Workers enabled: queue at %s, concurrency=%d\n", cfg.DBPath, cfg.Concurrency)
-		}
 
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -169,7 +229,7 @@ func main() {
 
 		<-quit
 		fmt.Println("\nShutting down...")
-		cancel() // stop worker pool and improvement loop goroutines
+		cancel()
 		srv.Shutdown(context.Background())
 		return
 	}

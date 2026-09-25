@@ -49,7 +49,12 @@ type Config struct {
 	// EnableWorkers starts the queue worker pool, improvement loop, and DB migrations.
 	// Defaults to false so existing tests are unaffected; set to true in config.yaml
 	// or pass --workers flag to activate.
-	EnableWorkers   bool             `yaml:"enable_workers"`
+	EnableWorkers bool `yaml:"enable_workers"`
+
+	// Memory / graph settings
+	MemoryEnabled      bool `yaml:"memory_enabled"`        // default false
+	RetrievalK         int  `yaml:"retrieval_k"`           // default 5
+	CoreMemoryMaxBytes int  `yaml:"core_memory_max_bytes"` // default 4096
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)
@@ -94,6 +99,13 @@ func Load(path string) (*Config, error) {
 	}
 	if len(cfg.Tools.Shell.AllowedCommands) == 0 {
 		cfg.Tools.Shell.AllowedCommands = []string{"git", "go", "npm", "python", "node", "curl"}
+	}
+	// Memory defaults — MemoryEnabled stays false unless explicitly set in config.
+	if cfg.RetrievalK == 0 {
+		cfg.RetrievalK = 5
+	}
+	if cfg.CoreMemoryMaxBytes == 0 {
+		cfg.CoreMemoryMaxBytes = 4096
 	}
 	return &cfg, nil
 }

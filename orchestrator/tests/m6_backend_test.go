@@ -20,7 +20,7 @@ func newWSTestServer(t *testing.T) *httptest.Server {
 	cfg := &config.Config{ProxyPort: 8080, FallbackChain: []string{"mock"}}
 	mock := &mockProvider{name: "mock"}
 	router := provider.NewRouter(mock, nil, 1, 10)
-	srv := server.New(router, cfg)
+	srv := server.New(router, cfg, nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(srv.Hub.ServeWS))
 	t.Cleanup(ts.Close)
@@ -44,7 +44,7 @@ func TestWebSocketBroadcast(t *testing.T) {
 	cfg := &config.Config{ProxyPort: 8080, FallbackChain: []string{"mock"}}
 	mock := &mockProvider{name: "mock"}
 	router := provider.NewRouter(mock, nil, 1, 10)
-	srv := server.New(router, cfg)
+	srv := server.New(router, cfg, nil)
 	ts := httptest.NewServer(http.HandlerFunc(srv.Hub.ServeWS))
 	defer ts.Close()
 
@@ -80,7 +80,7 @@ func TestWebSocketMultiClient(t *testing.T) {
 	cfg := &config.Config{ProxyPort: 8080, FallbackChain: []string{"mock"}}
 	mock := &mockProvider{name: "mock"}
 	router := provider.NewRouter(mock, nil, 1, 10)
-	srv := server.New(router, cfg)
+	srv := server.New(router, cfg, nil)
 	ts := httptest.NewServer(http.HandlerFunc(srv.Hub.ServeWS))
 	defer ts.Close()
 

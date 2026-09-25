@@ -9,6 +9,7 @@ import (
 
 	"github.com/01rg0/orchestrator/internal/config"
 	"github.com/01rg0/orchestrator/internal/hub"
+	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
 	"github.com/01rg0/orchestrator/internal/queue"
 )
@@ -18,13 +19,15 @@ type Server struct {
 	cfg        *config.Config
 	httpServer *http.Server
 	Hub        *hub.Hub
-	q          *queue.Queue // optional; nil when workers are disabled
+	q          *queue.Queue  // optional; nil when workers are disabled
+	graph      *memory.Graph
 }
 
-func New(router *provider.Router, cfg *config.Config) *Server {
+// New creates a Server. g may be nil when memory is not needed (e.g. in tests).
+func New(router *provider.Router, cfg *config.Config, g *memory.Graph) *Server {
 	h := hub.New()
 	go h.Run()
-	return &Server{router: router, cfg: cfg, Hub: h}
+	return &Server{router: router, cfg: cfg, Hub: h, graph: g}
 }
 
 // SetQueue attaches a live queue to the server, enabling /api/tasks and

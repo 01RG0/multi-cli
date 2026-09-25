@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
 )
 
@@ -76,6 +78,27 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	chatReq := toChatRequest(req)
 
+	// Extract last user message text — used for memory retrieval and episode logging.
+	var lastUserText string
+	for i := len(chatReq.Messages) - 1; i >= 0; i-- {
+		if chatReq.Messages[i].Role == "user" {
+			lastUserText = chatReq.Messages[i].Content
+			break
+		}
+	}
+
+	// Inject retrieved + core memory into system prompt when memory is enabled.
+	if s.cfg.MemoryEnabled && s.graph != nil && lastUserText != "" {
+		memBlock := s.buildMemoryBlock(r.Context(), lastUserText)
+		if memBlock != "" {
+			if len(chatReq.Messages) > 0 && chatReq.Messages[0].Role == "system" {
+				chatReq.Messages[0].Content += "\n\n" + memBlock
+			} else {
+				chatReq.Messages = append([]provider.Message{{Role: "system", Content: memBlock}}, chatReq.Messages...)
+			}
+		}
+	}
+
 	if req.Stream {
 		s.handleStream(w, r, chatReq, req.Model)
 		return
@@ -90,6 +113,23 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, err.Error(), code)
 		return
+	}
+
+	// Async episode write — must not block the HTTP response.
+	if s.graph != nil {
+		assistantText := resp.Content
+		agentID := r.Header.Get("X-Agent-ID")
+		go func() {
+			epCtx := context.Background()
+			compact, _ := json.Marshal(map[string]string{"user": lastUserText, "assistant": assistantText})
+			if _, err := s.graph.AppendEpisode(epCtx, memory.Episode{
+				AgentID: agentID,
+				Kind:    "message",
+				Content: string(compact),
+			}); err != nil {
+				log.Printf("memory: episode write: %v", err)
+			}
+		}()
 	}
 
 	out := proxyResponse{
@@ -223,6 +263,50 @@ func mapStopReason(reason string) string {
 	default:
 		return "end_turn"
 	}
+}
+
+// buildMemoryBlock assembles the <memory> XML block to inject into the system
+// prompt. It reads core memory and performs a hybrid search for relevant nodes.
+// Returns an empty string when there is nothing to inject.
+func (s *Server) buildMemoryBlock(ctx context.Context, query string) string {
+	k := s.cfg.RetrievalK
+	if k <= 0 {
+		k = 5
+	}
+
+	var coreContent string
+	if core, err := s.graph.ReadCore(ctx); err == nil {
+		coreContent = core.Content
+	} else {
+		log.Printf("memory: read core: %v", err)
+	}
+
+	results, err := s.graph.Search(ctx, query, k)
+	if err != nil {
+		log.Printf("memory: search: %v", err)
+	}
+
+	if coreContent == "" && len(results) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<memory>\n")
+	if coreContent != "" {
+		sb.WriteString("<core>")
+		sb.WriteString(coreContent)
+		sb.WriteString("</core>\n")
+	}
+	sb.WriteString("<retrieved>\n")
+	for _, r := range results {
+		sb.WriteString(r.Node.Label)
+		sb.WriteString(": ")
+		sb.WriteString(r.Node.Type)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("</retrieved>\n")
+	sb.WriteString("</memory>")
+	return sb.String()
 }
 
 func isAPIError(err error, target **provider.APIError) bool {

@@ -42,7 +42,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	}
 	mock := &mockProvider{name: "mock"}
 	router := provider.NewRouter(mock, nil, 1, 10)
-	srv := server.New(router, cfg)
+	srv := server.New(router, cfg, nil)
 
 	mux := http.NewServeMux()
 	// Re-register handlers via exported test helper
