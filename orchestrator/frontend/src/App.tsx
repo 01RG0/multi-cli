@@ -5,6 +5,8 @@ import type { WsEvent } from './store/useStore'
 import BrainGraph from './components/BrainGraph'
 import LiveFeed from './components/LiveFeed'
 import StatsPanel from './components/StatsPanel'
+import { FloatingDock, buildDockItems } from './components/FloatingDock'
+import ProviderCard from './components/ProviderCard'
 
 const WS_URL = import.meta.env.VITE_WS_URL ??
   `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
@@ -129,8 +131,16 @@ export default function App() {
           </div>
         </motion.header>
 
+        {/* Floating Dock */}
+        <div style={{
+          position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 100,
+        }}>
+          <FloatingDock items={buildDockItems()} />
+        </div>
+
         {/* Body */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: 12, paddingBottom: 100 }}>
 
           {/* Brain graph — full width glass card */}
           <motion.div
@@ -160,8 +170,18 @@ export default function App() {
             <BrainGraph />
           </motion.div>
 
-          {/* Bottom row: stats + feed */}
+          {/* Bottom row: provider card + stats + feed */}
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+
+            {/* Provider animation card */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.35 }}
+              style={{ width: 300, flexShrink: 0 }}
+            >
+              <ProviderCard />
+            </motion.div>
 
             {/* Stats */}
             <motion.div
