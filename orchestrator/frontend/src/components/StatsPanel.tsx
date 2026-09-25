@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AreaChart, Area, ResponsiveContainer } from 'recharts'
 import { useStore } from '../store/useStore'
 
 const FALLBACK_AGENTS = [
@@ -18,27 +17,17 @@ interface AgentNode {
 }
 
 function AnimatedNumber({ value }: { value: number }) {
-  const [displayed, setDisplayed] = useState(value)
-  const [key, setKey] = useState(0)
-
-  useEffect(() => {
-    if (value !== displayed) {
-      setKey(k => k + 1)
-      setDisplayed(value)
-    }
-  }, [value])
-
   return (
     <AnimatePresence mode="wait">
       <motion.span
-        key={key}
+        key={value}
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 8 }}
         transition={{ duration: 0.25 }}
         style={{ display: 'inline-block' }}
       >
-        {displayed}
+        {value}
       </motion.span>
     </AnimatePresence>
   )
@@ -51,6 +40,29 @@ const STAT_CARDS = [
   { key: 'failed',    label: 'Failed',    icon: '✗',  color: '#f87171', bg: '#1f0a0a' },
   { key: 'suspended', label: 'Suspended', icon: '⏸',  color: '#fb923c', bg: '#1f1208' },
 ] as const
+
+function SvgSparkline({ data }: { data: number[] }) {
+  const w = 188, h = 56
+  const max = Math.max(...data, 1)
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w
+    const y = h - (v / max) * (h - 4) - 2
+    return `${x},${y}`
+  }).join(' ')
+  const area = `0,${h} ` + pts + ` ${w},${h}`
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
+          <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill="url(#sg)" />
+      <polyline points={pts} fill="none" stroke="#6366f1" strokeWidth={1.5} strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 function agentColor(status?: string): string {
   if (status === 'working' || status === 'running') return '#facc15'
@@ -283,30 +295,10 @@ export default function StatsPanel() {
       {/* Divider */}
       <div style={{ height: '1px', background: '#1e293b' }} />
 
-      {/* 5. Throughput Sparkline */}
+      {/* 5. Throughput Sparkline (pure SVG) */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>Throughput</div>
-        <div style={{ width: '100%', height: '60px' }}>
-          <ResponsiveContainer width="100%" height={60}>
-            <AreaChart data={sparkData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.5} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Area
-                type="monotone"
-                dataKey="v"
-                stroke="#6366f1"
-                strokeWidth={1.5}
-                fill="url(#sparkGrad)"
-                dot={false}
-                isAnimationActive
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <SvgSparkline data={sparkData.map(d => d.v)} />
       </div>
     </div>
   )
