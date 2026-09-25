@@ -3,7 +3,6 @@ import { Group as PanelGroup, Panel as ResizablePanel, Separator } from 'react-r
 import CockpitHeader from './components/CockpitHeader';
 import SwarmRadialTopology from './components/SwarmRadialTopology';
 import AgentDeepInspector from './components/AgentDeepInspector';
-import TaskExecutionChat from './components/TaskExecutionChat';
 import TaskQueueTable from './components/TaskQueueTable';
 import LogStreamViewer from './components/LogStreamViewer';
 import ProviderChain from './components/ProviderChain';
@@ -84,6 +83,19 @@ export function App() {
     localStorage.setItem('ultron_active_tab', 'chat');
   };
 
+  // Allow other components (e.g. Chat Task Card) to switch active tabs seamlessly
+  React.useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const custom = e as CustomEvent<TabId>;
+      if (custom.detail && TABS.some((t) => t.id === custom.detail)) {
+        setActiveTab(custom.detail);
+        localStorage.setItem('ultron_active_tab', custom.detail);
+      }
+    };
+    window.addEventListener('ultron:switch-tab', handleSwitchTab);
+    return () => window.removeEventListener('ultron:switch-tab', handleSwitchTab);
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-black text-white font-sans selection:bg-white selection:text-black overflow-hidden">
 
@@ -153,7 +165,7 @@ export function App() {
                   </ResizablePanel>
                   <HResizeHandle />
                   <ResizablePanel defaultSize={50} minSize={15}>
-                    <Panel><TaskExecutionChat /></Panel>
+                    <Panel><ChatWidget /></Panel>
                   </ResizablePanel>
                 </PanelGroup>
               </ResizablePanel>
@@ -244,6 +256,11 @@ export function App() {
       <TerminalCommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
+        onNavigateTab={(tab) => {
+          setActiveTab(tab as TabId);
+          localStorage.setItem('ultron_active_tab', tab);
+        }}
+        onNewTask={handleNewTask}
       />
     </div>
   );

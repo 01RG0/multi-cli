@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Puzzle, Server, Zap, Plus, Trash2, Play, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Puzzle, Server, Zap, Plus, Trash2, Play, ChevronDown, ChevronRight, X, Clock, RefreshCw } from 'lucide-react';
 
 const BASE = 'http://localhost:8080';
 
@@ -364,9 +364,92 @@ function SkillsTab() {
   );
 }
 
+// ─── Cron Jobs Tab ────────────────────────────────────────────────────────────
+
+interface CronJob {
+  id: string;
+  schedule: string;
+  prompt: string;
+  agent_id: string;
+  enabled: boolean;
+  created_at: number;
+}
+
+function CronJobsTab() {
+  const [jobs, setJobs] = useState<CronJob[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/cron/jobs`);
+      const data = await r.json();
+      setJobs(Array.isArray(data) ? data : (data.jobs ?? []));
+    } catch { /* silent */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const deleteJob = async (id: string) => {
+    try {
+      await fetch(`${BASE}/api/cron/jobs/${id}`, { method: 'DELETE' });
+      setJobs(prev => prev.filter(j => j.id !== id));
+    } catch { /* silent */ }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+          <Clock className="w-3.5 h-3.5" />
+          <span>SCHEDULED CRON JOBS</span>
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors text-xs font-mono disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+          REFRESH
+        </button>
+      </div>
+
+      {jobs.length === 0 ? (
+        <div className="text-zinc-600 text-xs font-mono text-center py-8">
+          No cron jobs scheduled. Use the Ultron chat to create one via <span className="text-zinc-400">schedule_cron</span>.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {jobs.map(job => (
+            <div key={job.id} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex items-start justify-between gap-3 hover:border-zinc-700 transition-colors">
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-cyan-400 font-mono text-xs font-bold">{job.schedule}</span>
+                  {job.agent_id && (
+                    <span className="text-zinc-500 font-mono text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded">{job.agent_id}</span>
+                  )}
+                  <span className="text-zinc-600 font-mono text-[10px]">ID: {job.id.slice(0, 8)}</span>
+                </div>
+                <p className="text-zinc-300 text-xs font-mono truncate">{job.prompt}</p>
+              </div>
+              <button
+                onClick={() => deleteJob(job.id)}
+                title="Delete cron job"
+                className="p-1.5 rounded border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-800 transition-colors shrink-0"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-type PanelTab = 'servers' | 'skills';
+type PanelTab = 'servers' | 'skills' | 'cron';
 
 export default function MCPSkillsPanel() {
   const [activeTab, setActiveTab] = useState<PanelTab>('servers');
@@ -381,7 +464,7 @@ export default function MCPSkillsPanel() {
 
       {/* Tab switcher */}
       <div className="flex gap-1 px-4 pt-3 pb-2 border-b border-zinc-800 shrink-0">
-        {(['servers', 'skills'] as PanelTab[]).map(tab => (
+        {(['servers', 'skills', 'cron'] as PanelTab[]).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -394,14 +477,14 @@ export default function MCPSkillsPanel() {
             {activeTab === tab && (
               <div className="absolute inset-0 bg-white rounded z-[-1]" />
             )}
-            {tab === 'servers' ? 'MCP SERVERS' : 'SKILLS'}
+            {tab === 'servers' ? 'MCP SERVERS' : tab === 'skills' ? 'SKILLS' : 'CRON JOBS'}
           </button>
         ))}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
-        {activeTab === 'servers' ? <MCPServersTab /> : <SkillsTab />}
+        {activeTab === 'servers' ? <MCPServersTab /> : activeTab === 'skills' ? <SkillsTab /> : <CronJobsTab />}
       </div>
     </div>
   );

@@ -428,15 +428,15 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
       case 'dispatch_pipeline': {
         const steps = input['steps'] as Array<{ agent_id: string; prompt: string }>;
-        const results = await Promise.all(
-          steps.map((s) =>
-            fetch(`${BASE}/api/tasks/enqueue`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ agentId: s.agent_id, prompt: s.prompt }),
-            }).then((r) => r.json()),
-          ),
-        );
+        const results = [];
+        for (const s of steps) {
+          const r = await fetch(`${BASE}/api/tasks/enqueue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId: s.agent_id, prompt: s.prompt }),
+          });
+          results.push(await r.json());
+        }
         return JSON.stringify(results);
       }
       case 'get_queue_status': {

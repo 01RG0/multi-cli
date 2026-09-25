@@ -210,6 +210,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/api/mcp/call", s.handleMCPCall)
 	}
 
+	mux.HandleFunc("/api/providers", s.handleProviderHealth)
+
 	return mux
 }
 

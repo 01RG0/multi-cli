@@ -1081,6 +1081,27 @@ class SwarmWebSocketEngine {
           })
           .catch(() => {});
 
+        // Fetch real provider list from /api/providers
+        fetch(`${baseURL}/api/providers`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((data) => {
+            if (!data || !Array.isArray(data.providers)) return;
+            const realProviders: Array<{ name: string; base_url: string; status: string }> = data.providers;
+            this.batcher.enqueue((state) => ({
+              providers: state.providers.map((p) => {
+                const match = realProviders.find(
+                  (rp) => p.name.toLowerCase().includes(rp.name.toLowerCase()) ||
+                          rp.name.toLowerCase().includes(p.name.toLowerCase())
+                );
+                if (match) {
+                  return { ...p, health: match.status === 'active' ? 'green' as const : 'amber' as const };
+                }
+                return p;
+              }),
+            }));
+          })
+          .catch(() => {});
+
         // Fetch real agent status from /api/agents/status
         fetch(`${baseURL}/api/agents/status`)
           .then((r) => r.ok ? r.json() : null)

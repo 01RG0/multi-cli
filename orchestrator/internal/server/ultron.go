@@ -35,7 +35,7 @@ func (s *Server) handleMemorySearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	results, err := s.graph.Search(r.Context(), q, limit)
-	if err != nil {
+	if err != nil || results == nil {
 		json.NewEncoder(w).Encode([]any{})
 		return
 	}
@@ -963,4 +963,28 @@ func (s *Server) handleMCPCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]string{"result": result})
+}
+
+// ─── Provider health endpoint ─────────────────────────────────────────────────
+
+func (s *Server) handleProviderHealth(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	type ProviderInfo struct {
+		Name    string `json:"name"`
+		BaseURL string `json:"base_url"`
+		Status  string `json:"status"`
+	}
+	providers := make([]ProviderInfo, 0, len(s.cfg.Providers))
+	for _, p := range s.cfg.Providers {
+		providers = append(providers, ProviderInfo{
+			Name:    p.Name,
+			BaseURL: p.BaseURL,
+			Status:  "active",
+		})
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"providers": providers})
 }

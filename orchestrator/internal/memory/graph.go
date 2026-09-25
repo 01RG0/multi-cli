@@ -32,44 +32,44 @@ func sourceWeight(source string) float64 {
 
 // Node represents a knowledge graph node.
 type Node struct {
-	ID         string
-	Label      string
-	Type       string
-	Source     string
-	Confidence float64
-	Embedding  []byte
-	CreatedAt  int64
-	UpdatedAt  int64
+	ID         string  `json:"id"`
+	Label      string  `json:"label"`
+	Type       string  `json:"type"`
+	Source     string  `json:"source"`
+	Confidence float64 `json:"confidence"`
+	Embedding  []byte  `json:"embedding,omitempty"`
+	CreatedAt  int64   `json:"created_at"`
+	UpdatedAt  int64   `json:"updated_at"`
 }
 
 // Edge represents a temporal directed edge.
 type Edge struct {
-	ID        string
-	Src       string
-	Dst       string
-	Relation  string
-	Weight    float64
-	ValidAt   int64
-	InvalidAt *int64
-	Metadata  string
+	ID        string  `json:"id"`
+	Src       string  `json:"src"`
+	Dst       string  `json:"dst"`
+	Relation  string  `json:"relation"`
+	Weight    float64 `json:"weight"`
+	ValidAt   int64   `json:"valid_at"`
+	InvalidAt *int64  `json:"invalid_at,omitempty"`
+	Metadata  string  `json:"metadata,omitempty"`
 }
 
 // Episode represents an append-only log entry.
 type Episode struct {
-	ID             string
-	ParentID       string
-	AgentID        string
-	Kind           string
-	CheckpointType string
-	Content        string
-	NodeIDs        string
-	CreatedAt      int64
+	ID             string `json:"id"`
+	ParentID       string `json:"parent_id,omitempty"`
+	AgentID        string `json:"agent_id"`
+	Kind           string `json:"kind"`
+	CheckpointType string `json:"checkpoint_type,omitempty"`
+	Content        string `json:"content"`
+	NodeIDs        string `json:"node_ids,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
 }
 
 // SearchResult is a ranked search hit.
 type SearchResult struct {
-	Node  Node
-	Score float64
+	Node  Node    `json:"node"`
+	Score float64 `json:"score"`
 }
 
 // Graph is the temporal knowledge graph.
@@ -257,6 +257,12 @@ func (g *Graph) AppendEpisode(ctx context.Context, ep Episode) (string, error) {
 // computed in-process via Ollama embeddings; if Ollama is unreachable the
 // function falls back to BM25-only — no error is returned in that case.
 func (g *Graph) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
+	if strings.TrimSpace(query) == "" {
+		return []SearchResult{}, nil
+	}
+	// Escape FTS5 special chars by wrapping in double-quotes (phrase search).
+	ftsQuery := `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
+
 	const k = 60.0
 
 	// --- BM25 leg via FTS5 ---
@@ -268,7 +274,7 @@ func (g *Graph) Search(ctx context.Context, query string, limit int) ([]SearchRe
 		WHERE nodes_fts MATCH ?
 		ORDER BY bm25_score
 		LIMIT ?
-	`, query, limit*3)
+	`, ftsQuery, limit*3)
 	if err != nil {
 		return nil, err
 	}
@@ -446,3 +452,76 @@ func (g *Graph) BFSNeighbors(ctx context.Context, startID string, maxDepth int, 
 	}
 	return result, nil
 }
+
+// GetGraph returns all nodes and currently active edges in the knowledge graph.
+func (g *Graph) GetGraph(ctx context.Context) ([]Node, []Edge, error) {
+	nodeRows, err := g.db.QueryContext(ctx,
+		`SELECT id, label, type, source, confidence, created_at, updated_at FROM nodes ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query nodes: %w", err)
+	}
+	defer nodeRows.Close()
+
+	nodes := make([]Node, 0)
+	for nodeRows.Next() {
+		var n Node
+		if err := nodeRows.Scan(&n.ID, &n.Label, &n.Type, &n.Source, &n.Confidence, &n.CreatedAt, &n.UpdatedAt); err != nil {
+			return nil, nil, fmt.Errorf("scan node: %w", err)
+		}
+		nodes = append(nodes, n)
+	}
+	if err := nodeRows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("nodes iteration: %w", err)
+	}
+
+	edgeRows, err := g.db.QueryContext(ctx,
+		`SELECT id, src, dst, relation, weight, valid_at, invalid_at, metadata FROM edges WHERE invalid_at IS NULL ORDER BY weight DESC`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query edges: %w", err)
+	}
+	defer edgeRows.Close()
+
+	edges := make([]Edge, 0)
+	for edgeRows.Next() {
+		var e Edge
+		var invalidAt sql.NullInt64
+		var metadata sql.NullString
+		if err := edgeRows.Scan(&e.ID, &e.Src, &e.Dst, &e.Relation, &e.Weight, &e.ValidAt, &invalidAt, &metadata); err != nil {
+			return nil, nil, fmt.Errorf("scan edge: %w", err)
+		}
+		if invalidAt.Valid {
+			e.InvalidAt = &invalidAt.Int64
+		}
+		if metadata.Valid {
+			e.Metadata = metadata.String
+		}
+		edges = append(edges, e)
+	}
+	if err := edgeRows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("edges iteration: %w", err)
+	}
+
+	return nodes, edges, nil
+}
+
+// DeleteNode deletes a node, its associated edges, and removes any corresponding embedding from vec_nodes.
+func (g *Graph) DeleteNode(ctx context.Context, id string) error {
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM edges WHERE src = ? OR dst = ?`, id, id); err != nil {
+		return fmt.Errorf("delete edges: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vec_nodes WHERE node_id = ?`, id); err != nil {
+		return fmt.Errorf("delete vec_nodes: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM nodes WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("delete node: %w", err)
+	}
+
+	return tx.Commit()
+}
+
