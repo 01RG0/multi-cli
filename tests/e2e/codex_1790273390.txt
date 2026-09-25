@@ -1,0 +1,4 @@
+error: invalid value 'You are part of an E2E test. Reply with your name and the word PASS. Be very brief.' for '--profile <CONFIG_PROFILE_V2>': invalid --profile value `You are part of an E2E test. Reply with your name and the word PASS. Be very brief.`; pass a plain name such as `work`
+
+For more information, try '--help'.
+[codex] exit code: 0

@@ -1,0 +1,2 @@
+Grok 4.7 PASS
+[grok] exit code: 0

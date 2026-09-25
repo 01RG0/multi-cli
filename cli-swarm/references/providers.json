@@ -1,0 +1,373 @@
+{
+  "_comment": "Sub-agent API providers. Populated from D:/pRoG/jarvis/.env discovery. Gemini excluded.",
+  "_note": "CodeCraft excluded — key revoked. Add entries freely; no code changes needed.",
+  "_format": {
+    "id": "used in --chain / --cli",
+    "label": "display name",
+    "base_url": "OpenAI-compat base URL (null for special handlers)",
+    "model": "model ID passed to the API",
+    "api_key_env": "env var name holding the key",
+    "cost_tier": "free | cheap | moderate | paid | unknown",
+    "handler": "openai-compat (default) | anthropic-sdk | aws-bedrock",
+    "extra_env": "additional env vars needed (AWS etc.)"
+  },
+
+  "providers": [
+
+    {
+      "_section": "FREE / ULTRA-FAST — try these first"
+    },
+    {
+      "id": "groq",
+      "label": "Groq — Llama-3.3-70B",
+      "base_url": "https://api.groq.com/openai/v1",
+      "model": "llama-3.3-70b-versatile",
+      "api_key_env": "GROQ_API_KEY",
+      "cost_tier": "free",
+      "handler": "openai-compat",
+      "notes": "Free tier, fastest inference. Best first-pass for any code task."
+    },
+    {
+      "id": "cerebras",
+      "label": "Cerebras — Llama-3.3-70B",
+      "base_url": "https://api.cerebras.ai/v1",
+      "model": "llama-3.3-70b",
+      "api_key_env": "CEREBRAS_API_KEY",
+      "cost_tier": "free",
+      "handler": "openai-compat",
+      "notes": "WSE ultra-fast. Free. Enable billing at cerebras.ai/billing first."
+    },
+    {
+      "id": "anyapi-qwen-coder",
+      "label": "AnyAPI — Qwen3-Coder (free)",
+      "base_url": "https://api.anyapi.ai/v1",
+      "model": "qwen/qwen3-coder:free",
+      "api_key_env": "ANYAPI_API_KEY",
+      "cost_tier": "free",
+      "handler": "openai-compat",
+      "notes": "Free code-specialist model via AnyAPI. OpenRouter-style slugs."
+    },
+    {
+      "id": "anyapi-nemotron",
+      "label": "AnyAPI — NVIDIA Nemotron-550B (free)",
+      "base_url": "https://api.anyapi.ai/v1",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "api_key_env": "ANYAPI_API_KEY",
+      "cost_tier": "free",
+      "handler": "openai-compat",
+      "notes": "550B MoE model, free via AnyAPI."
+    },
+
+    {
+      "_section": "CHEAP — code-specialised"
+    },
+    {
+      "id": "mistral-codestral",
+      "label": "Mistral — Codestral",
+      "base_url": "https://codestral.mistral.ai/v1",
+      "model": "codestral-latest",
+      "api_key_env": "MISTRAL_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat",
+      "notes": "Dedicated Mistral code model."
+    },
+    {
+      "id": "mistral-large",
+      "label": "Mistral — Mistral Large",
+      "base_url": "https://api.mistral.ai/v1",
+      "model": "mistral-large-latest",
+      "api_key_env": "MISTRAL_API_KEY",
+      "cost_tier": "moderate",
+      "handler": "openai-compat"
+    },
+    {
+      "id": "openrouter-deepseek-coder",
+      "label": "OpenRouter — DeepSeek Chat V3",
+      "base_url": "https://openrouter.ai/api/v1",
+      "model": "deepseek/deepseek-chat-v3-0324",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat",
+      "notes": "Strong general + code model, cheap."
+    },
+    {
+      "id": "openrouter-qwen-coder",
+      "label": "OpenRouter — Qwen2.5-Coder-32B",
+      "base_url": "https://openrouter.ai/api/v1",
+      "model": "qwen/qwen-2.5-coder-32b-instruct",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat",
+      "notes": "Best open-weight code model."
+    },
+    {
+      "id": "pooled-deepseek",
+      "label": "Pooled — DeepSeek V4 Pro (official)",
+      "base_url": "https://ai.pooled.dev/v1",
+      "model": "deepseek-v4-pro-official",
+      "api_key_env": "POOLED_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat",
+      "notes": "DeepSeek V4 Pro via pooled.dev."
+    },
+    {
+      "id": "pooled-kimi",
+      "label": "Pooled — Kimi K2.6 (official)",
+      "base_url": "https://ai.pooled.dev/v1",
+      "model": "kimi-k2.6-official",
+      "api_key_env": "POOLED_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat",
+      "notes": "Kimi K2.6 via pooled.dev."
+    },
+
+    {
+      "_section": "STRONG PROXIES — best models via aggregators"
+    },
+    {
+      "id": "atessa-swe",
+      "label": "Atessa — SWE-1-7-MAX (SWE specialist!)",
+      "base_url": "https://atessa.top/v1",
+      "model": "swe-1-7-max",
+      "api_key_env": "ATESSA_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "Dedicated software-engineering model. Top choice for code tasks."
+    },
+    {
+      "id": "atessa-kimi-code",
+      "label": "Atessa — Kimi K2.8 Code",
+      "base_url": "https://atessa.top/v1",
+      "model": "kimi-k2.8-code",
+      "api_key_env": "ATESSA_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "Code-specialist Kimi model via Atessa."
+    },
+    {
+      "id": "atessa-claude-strong",
+      "label": "Atessa — Claude Opus 5 Strong",
+      "base_url": "https://atessa.top/v1",
+      "model": "claude-opus-5-strong",
+      "api_key_env": "ATESSA_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "Claude Opus 5 via Atessa proxy."
+    },
+    {
+      "id": "atessa-deepseek",
+      "label": "Atessa — DeepSeek V4 Pro",
+      "base_url": "https://atessa.top/v1",
+      "model": "deepseek-v4-pro",
+      "api_key_env": "ATESSA_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat"
+    },
+    {
+      "id": "aihubmix-claude",
+      "label": "AIHubMix — Claude Opus 5",
+      "base_url": "https://aihubmix.com/v1",
+      "model": "claude-opus-5",
+      "api_key_env": "AIHUBMIX_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "409 models. Claude Opus 5 for strongest output."
+    },
+    {
+      "id": "aihubmix-deepseek",
+      "label": "AIHubMix — DeepSeek V4 Pro",
+      "base_url": "https://aihubmix.com/v1",
+      "model": "deepseek-v4-pro-0813",
+      "api_key_env": "AIHUBMIX_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat"
+    },
+    {
+      "id": "aihubmix-coding-glm",
+      "label": "AIHubMix — Coding-GLM 5.3",
+      "base_url": "https://aihubmix.com/v1",
+      "model": "coding-glm-5.3",
+      "api_key_env": "AIHUBMIX_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "Code-specialist GLM model."
+    },
+    {
+      "id": "apertis-fable",
+      "label": "Apertis — Claude Fable 5.1",
+      "base_url": "https://api.apertis.ai/v1",
+      "model": "claude-fable-5.1",
+      "api_key_env": "APERTIS_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "441 models. Fable 5.1 is a strong Claude variant."
+    },
+    {
+      "id": "apertis-deepseek",
+      "label": "Apertis — DeepSeek V4 Pro",
+      "base_url": "https://api.apertis.ai/v1",
+      "model": "deepseek-v4-pro-0813",
+      "api_key_env": "APERTIS_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat"
+    },
+    {
+      "id": "apertis-grok-multi",
+      "label": "Apertis — Grok 4.20 Multi-Agent Beta",
+      "base_url": "https://api.apertis.ai/v1",
+      "model": "grok-4.20-multi-agent-beta",
+      "api_key_env": "APERTIS_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "Multi-agent capable Grok model."
+    },
+    {
+      "id": "tokenharbor-claude",
+      "label": "TokenHarbor — Claude Opus 5",
+      "base_url": "https://tokenharbor.ai/v1",
+      "model": "claude-opus-5",
+      "api_key_env": "TOKEN_HARBOR_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat",
+      "notes": "Claude Opus 5 via TokenHarbor."
+    },
+    {
+      "id": "tokenharbor-deepseek",
+      "label": "TokenHarbor — DeepSeek V4 Pro",
+      "base_url": "https://tokenharbor.ai/v1",
+      "model": "deepseek-v4-pro",
+      "api_key_env": "TOKEN_HARBOR_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat"
+    },
+    {
+      "id": "tokenharbor-fable",
+      "label": "TokenHarbor — Claude Fable 5.1",
+      "base_url": "https://tokenharbor.ai/v1",
+      "model": "claude-fable-5.1",
+      "api_key_env": "TOKEN_HARBOR_API_KEY",
+      "cost_tier": "unknown",
+      "handler": "openai-compat"
+    },
+
+    {
+      "_section": "REASONING — for complex logic tasks"
+    },
+    {
+      "id": "openrouter-deepseek-r1",
+      "label": "OpenRouter — DeepSeek R1 (reasoning)",
+      "base_url": "https://openrouter.ai/api/v1",
+      "model": "deepseek/deepseek-r1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat",
+      "notes": "Chain-of-thought reasoning. Best for complex algorithmic / architectural tasks."
+    },
+
+    {
+      "_section": "PROVIDER MODELS — Alibaba, Cohere"
+    },
+    {
+      "id": "alibaba-qwen-coder",
+      "label": "Alibaba DashScope — Qwen2.5-Coder-32B",
+      "base_url": "https://ws-w8ruptuvye38qnzr.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+      "model": "qwen2.5-coder-32b-instruct",
+      "api_key_env": "ALIBABA_API_KEY",
+      "cost_tier": "cheap",
+      "handler": "openai-compat"
+    },
+    {
+      "id": "alibaba-qwen-max",
+      "label": "Alibaba DashScope — Qwen-Max",
+      "base_url": "https://ws-w8ruptuvye38qnzr.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+      "model": "qwen-max",
+      "api_key_env": "ALIBABA_API_KEY",
+      "cost_tier": "moderate",
+      "handler": "openai-compat",
+      "notes": "Strongest Qwen model."
+    },
+    {
+      "id": "cohere",
+      "label": "Cohere — Command R+",
+      "base_url": "https://api.cohere.com/compatibility/v1",
+      "model": "command-r-plus-08-2024",
+      "api_key_env": "COHERE_API_KEY",
+      "cost_tier": "moderate",
+      "handler": "openai-compat"
+    },
+
+    {
+      "_section": "CLOUD / MOST RELIABLE — fallback of last resort"
+    },
+    {
+      "id": "aws-bedrock",
+      "label": "AWS Bedrock — Claude Sonnet 4.6",
+      "base_url": null,
+      "model": "us.anthropic.claude-sonnet-4-5",
+      "api_key_env": "AWS_ACCESS_KEY_ID",
+      "cost_tier": "moderate",
+      "handler": "aws-bedrock",
+      "extra_env": ["AWS_SECRET_ACCESS_KEY", "AWS_REGION_NAME"],
+      "notes": "Most reliable. Claude via AWS. Needs boto3: pip install boto3."
+    },
+    {
+      "id": "claude-api",
+      "label": "Anthropic — Claude Opus 5 (direct)",
+      "base_url": "https://api.anthropic.com",
+      "model": "claude-opus-5",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "cost_tier": "paid",
+      "handler": "anthropic-sdk",
+      "notes": "ANTHROPIC_API_KEY empty in jarvis .env — add key to enable."
+    }
+  ],
+
+  "fallback_chains": {
+    "default": [
+      "groq", "cerebras",
+      "anyapi-qwen-coder",
+      "atessa-swe",
+      "openrouter-deepseek-coder",
+      "aihubmix-deepseek",
+      "tokenharbor-claude",
+      "aws-bedrock"
+    ],
+    "code": [
+      "anyapi-qwen-coder",
+      "atessa-swe",
+      "atessa-kimi-code",
+      "aihubmix-coding-glm",
+      "mistral-codestral",
+      "openrouter-qwen-coder",
+      "openrouter-deepseek-r1",
+      "aws-bedrock"
+    ],
+    "strongest": [
+      "atessa-claude-strong",
+      "aihubmix-claude",
+      "tokenharbor-claude",
+      "apertis-fable",
+      "openrouter-deepseek-r1",
+      "alibaba-qwen-max",
+      "aws-bedrock"
+    ],
+    "fastest_free": [
+      "groq", "cerebras",
+      "anyapi-qwen-coder",
+      "anyapi-nemotron"
+    ],
+    "reasoning": [
+      "openrouter-deepseek-r1",
+      "atessa-deepseek",
+      "aihubmix-deepseek",
+      "apertis-deepseek",
+      "alibaba-qwen-max",
+      "aws-bedrock"
+    ],
+    "proxy_explore": [
+      "atessa-swe", "atessa-claude-strong",
+      "aihubmix-claude", "apertis-fable",
+      "tokenharbor-claude", "pooled-deepseek"
+    ]
+  }
+}

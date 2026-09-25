@@ -1,0 +1,3 @@
+[2m[thinking] [0m[2mThe user asks for[0m[2m CLI name[0m[2m and PASS,[0m[2m under 10 words.[0m
+Cline PASS
+[cline exit: 0]

@@ -1,0 +1,2 @@
+Antigravity CLI PASS
+[exit:0]
