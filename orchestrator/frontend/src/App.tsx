@@ -124,40 +124,15 @@ export default function App() {
         </div>
       </motion.header>
 
-      {/* ── 3-column body ── */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          gap: 12,
-          padding: 12,
-          overflow: 'hidden',
-          alignItems: 'flex-start',
-        }}
-      >
-        {/* Left: Stats sidebar */}
-        <motion.div
-          initial={{ opacity: 0, x: -24 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          style={{
-            flexShrink: 0,
-            border: '1px solid #1e293b',
-            borderRadius: 12,
-            boxShadow: '0 0 0 1px rgba(99,102,241,0.08), 0 8px 32px rgba(0,0,0,0.4)',
-          }}
-        >
-          <StatsPanel />
-        </motion.div>
+      {/* ── Main content ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, padding: 12 }}>
 
-        {/* Center: Brain graph */}
+        {/* Brain graph — full width */}
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
           style={{
-            flex: 1,
-            minWidth: 0,
             border: '1px solid #1e293b',
             borderRadius: 12,
             overflow: 'hidden',
@@ -172,22 +147,42 @@ export default function App() {
           <BrainGraph />
         </motion.div>
 
-        {/* Right: Live feed */}
-        <motion.div
-          initial={{ opacity: 0, x: 24 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          style={{
-            width: 420,
-            flexShrink: 0,
-            border: '1px solid #1e293b',
-            borderRadius: 12,
-            overflow: 'hidden',
-            boxShadow: '0 0 0 1px rgba(99,102,241,0.08), 0 8px 32px rgba(0,0,0,0.4)',
-          }}
-        >
-          <LiveFeed />
-        </motion.div>
+        {/* Stats + Live feed side by side */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          {/* Stats bar — compact horizontal */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            style={{
+              flexShrink: 0,
+              border: '1px solid #1e293b',
+              borderRadius: 12,
+              overflow: 'hidden',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            }}
+          >
+            <StatsPanel />
+          </motion.div>
+
+          {/* Live feed — fills remaining width */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.25 }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: '1px solid #1e293b',
+              borderRadius: 12,
+              overflow: 'hidden',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            }}
+          >
+            <LiveFeed />
+          </motion.div>
+        </div>
+
       </div>
     </div>
     </ErrorBoundary>

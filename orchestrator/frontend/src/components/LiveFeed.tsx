@@ -405,8 +405,6 @@ export default function LiveFeed() {
         flexDirection: 'column',
         height: 500,
         background: '#0f172a',
-        border: '1px solid #1e293b',
-        borderRadius: 8,
         overflow: 'hidden',
         fontFamily: "'JetBrains Mono', 'Courier New', monospace",
         color: '#e2e8f0',
