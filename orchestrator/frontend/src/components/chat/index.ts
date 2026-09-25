@@ -7,4 +7,5 @@ export type { CommandSuggestionsProps } from './CommandSuggestions';
 export { ChatWidget } from './ChatWidget';
 export { useOrchestatorChat } from './useOrchestatorChat';
 export type { ChatMessage, ChatSession, ToolUseBlock, UseOrchestatorChatReturn } from './useOrchestatorChat';
-export { ULTRON_SYSTEM_PROMPT } from './ultronPrompt';
+export { ULTRON_SYSTEM_PROMPT, buildUltronSystemPrompt, ULTRON_SWARM_AGENTS } from './ultronPrompt';
+export type { UltronDynamicContext } from './ultronPrompt';

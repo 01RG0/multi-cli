@@ -8,7 +8,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSwarmStore } from '../../store/useSwarmStore';
-import { ULTRON_SYSTEM_PROMPT } from './ultronPrompt';
+import { ULTRON_SYSTEM_PROMPT, buildUltronSystemPrompt } from './ultronPrompt';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -140,7 +140,10 @@ const ULTRON_TOOLS = [
       properties: {
         agent_id: {
           type: 'string',
-          enum: ['opencode', 'codex', 'vibe', 'agy', 'grok', 'cline', 'kilo', 'cursor', 'researcher', 'debugger', 'jules'],
+          enum: [
+            'opencode', 'codex', 'vibe', 'agy', 'grok', 'cline', 'kilo', 'cursor',
+            'hermes', 'deepseek', 'harness', 'kimocode', 'pi', 'researcher', 'debugger', 'jules',
+          ],
         },
         prompt:   { type: 'string' },
         priority: { type: 'number', default: 5 },
@@ -159,7 +162,13 @@ const ULTRON_TOOLS = [
           items: {
             type: 'object',
             properties: {
-              agent_id: { type: 'string' },
+              agent_id: {
+                type: 'string',
+                enum: [
+                  'opencode', 'codex', 'vibe', 'agy', 'grok', 'cline', 'kilo', 'cursor',
+                  'hermes', 'deepseek', 'harness', 'kimocode', 'pi', 'researcher', 'debugger', 'jules',
+                ],
+              },
               prompt:   { type: 'string' },
             },
             required: ['agent_id', 'prompt'],
@@ -566,10 +575,15 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
           turns++;
 
           // 3. POST to proxy
+          const dynamicPrompt = buildUltronSystemPrompt({
+            date: new Date().toISOString().split('T')[0],
+            activeToolsCount: activeTools.length,
+          });
+
           const payload = {
             model:      'us.anthropic.claude-sonnet-4-6',
             max_tokens: 4096,
-            system:     ULTRON_SYSTEM_PROMPT,
+            system:     dynamicPrompt,
             tools:      activeTools,
             messages:   conversationRef.current,
           };
