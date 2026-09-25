@@ -1,4 +1,3 @@
-import '@xyflow/react/dist/style.css'
 import {
   ReactFlow, Background, Controls, MiniMap,
   useNodesState, useEdgesState,
@@ -143,7 +142,7 @@ export default function BrainGraph() {
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
-        style={{ width: '100%', height: 520 }}
+        style={{ width: '100%', height: 400 }}
       >
         <ReactFlow
           nodes={nodes} edges={edges}

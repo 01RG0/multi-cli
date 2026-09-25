@@ -105,7 +105,7 @@ export function SparklesHero() {
   return (
     <div style={{
       position: 'relative',
-      width: '100%', height: 100,
+      width: '100%', height: 56,
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       overflow: 'hidden',
