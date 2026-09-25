@@ -39,6 +39,31 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 		a.args = []string{"-p"}
 	case "cline":
 		a.args = []string{"--message"}
+	case "cursor":
+		a.args = []string{"--headless"}
+	case "kilo":
+		a.args = []string{"--non-interactive"}
+	case "jules":
+		a.args = []string{"--no-interactive"}
+	case "researcher":
+		a.args = []string{"--query"}
+	case "debugger":
+		a.args = []string{"--prompt"}
+	case "hermes":
+		// TODO: confirm headless flags for Nous Research Hermes CLI
+		a.args = []string{"--prompt"}
+	case "deepseek":
+		// TODO: confirm headless flags for DeepSeek CLI client
+		a.args = []string{"--prompt"}
+	case "harness":
+		// TODO: confirm headless flags for Harness AI coding assistant CLI
+		a.args = []string{"--message"}
+	case "kimocode":
+		// TODO: confirm headless flags for Kimo Code CLI
+		a.args = []string{"--prompt"}
+	case "pi":
+		// TODO: confirm headless flags for Pi.ai (Inflection AI) CLI
+		a.args = []string{"--prompt"}
 	}
 	return a
 }
@@ -57,14 +82,12 @@ func (a *CLIAgent) Run(ctx context.Context, prompt string) (string, error) {
 	argv := append(a.args, prompt)
 
 	if runtime.GOOS == "linux" {
-		// `script -qc "<cmd>" /dev/null` allocates a PTY without needing
-		// an external Go library — available on all Linux distros.
 		fullCmd := shellQuote(a.binary) + " " + shellQuoteSlice(argv)
 		cmd = exec.CommandContext(ctx, "script", "-qc", fullCmd, "/dev/null")
 	} else {
 		cmd = exec.CommandContext(ctx, a.binary, argv...)
 	}
-	cmd.Env = proxyEnv()
+	cmd.Env = proxyEnv(a.name)
 
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -82,16 +105,20 @@ func (a *CLIAgent) Available() bool {
 	return err == nil
 }
 
-// proxyEnv returns os.Environ() with ANTHROPIC_BASE_URL set from environment
-// or defaulting to the local proxy.
-func proxyEnv() []string {
+// proxyEnv returns os.Environ() with ANTHROPIC_BASE_URL set to the
+// per-agent proxy path so each agent uses its own provider chain.
+func proxyEnv(agentName string) []string {
 	env := os.Environ()
+	baseURL := fmt.Sprintf("http://localhost:8080/agent/%s", agentName)
+	// Override any existing ANTHROPIC_BASE_URL
+	result := make([]string, 0, len(env)+1)
 	for _, e := range env {
 		if strings.HasPrefix(e, "ANTHROPIC_BASE_URL=") {
-			return env
+			continue
 		}
+		result = append(result, e)
 	}
-	return append(env, "ANTHROPIC_BASE_URL=http://localhost:8080")
+	return append(result, "ANTHROPIC_BASE_URL="+baseURL)
 }
 
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][A-Za-z0-9]`)
