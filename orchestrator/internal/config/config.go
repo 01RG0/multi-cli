@@ -64,6 +64,20 @@ type Config struct {
 	// AgentProviders maps agent names to ordered provider preference lists.
 	// Empty or missing entry means use the global FallbackChain.
 	AgentProviders map[string][]string `yaml:"agent_providers"`
+
+	// MCPServers lists external MCP servers to connect at startup.
+	// Each entry can use stdio (Command+Args) or HTTP (BaseURL).
+	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
+}
+
+// MCPServerConfig mirrors mcp.ServerConfig but lives in config to avoid
+// an import cycle — server.go imports both config and mcp.
+type MCPServerConfig struct {
+	Name    string   `yaml:"name"`
+	Command string   `yaml:"command"`
+	Args    []string `yaml:"args"`
+	Env     []string `yaml:"env"`
+	BaseURL string   `yaml:"base_url"`
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)

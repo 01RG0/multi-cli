@@ -10,6 +10,7 @@ import (
 
 	"github.com/01rg0/orchestrator/internal/config"
 	"github.com/01rg0/orchestrator/internal/hub"
+	"github.com/01rg0/orchestrator/internal/mcp"
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
 	"github.com/01rg0/orchestrator/internal/queue"
@@ -25,6 +26,7 @@ type Server struct {
 	graph       *memory.Graph
 	db          *sql.DB
 	providerMap map[string]provider.Provider
+	mcpManager  *mcp.Manager // optional; nil when no MCP servers configured
 }
 
 // New creates a Server. g may be nil when memory is not needed (e.g. in tests).
@@ -73,6 +75,12 @@ func (s *Server) RegisterUltronRoutes(db *sql.DB, graph *memory.Graph, q *queue.
 // SetProviderMap stores the provider map for per-agent routing.
 func (s *Server) SetProviderMap(m map[string]provider.Provider) {
 	s.providerMap = m
+}
+
+// SetMCPManager attaches an MCP manager, enabling MCP API routes.
+// Must be called before Start().
+func (s *Server) SetMCPManager(m *mcp.Manager) {
+	s.mcpManager = m
 }
 
 // buildAgentRouter returns a per-agent router if AgentProviders is configured,
@@ -159,6 +167,16 @@ func (s *Server) Start() error {
 
 		// Feedback
 		mux.HandleFunc("/api/feedback", s.handleFeedback)
+
+		// Skills
+		mux.HandleFunc("/api/skills", s.handleSkills)
+		mux.HandleFunc("/api/skills/{id}", s.handleSkillByID)
+		mux.HandleFunc("/api/skills/{id}/run", s.handleSkillRun)
+
+		// MCP
+		mux.HandleFunc("/api/mcp/servers", s.handleMCPServers)
+		mux.HandleFunc("/api/mcp/servers/{name}/tools", s.handleMCPServerTools)
+		mux.HandleFunc("/api/mcp/call", s.handleMCPCall)
 	}
 
 	addr := fmt.Sprintf(":%d", s.cfg.ProxyPort)

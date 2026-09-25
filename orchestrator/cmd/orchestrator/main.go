@@ -14,10 +14,12 @@ import (
 	"github.com/01rg0/orchestrator/internal/config"
 	"github.com/01rg0/orchestrator/internal/db"
 	"github.com/01rg0/orchestrator/internal/improvement"
+	"github.com/01rg0/orchestrator/internal/mcp"
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
 	"github.com/01rg0/orchestrator/internal/queue"
 	"github.com/01rg0/orchestrator/internal/server"
+	"github.com/01rg0/orchestrator/internal/skills"
 )
 
 func main() {
@@ -58,6 +60,9 @@ func main() {
 	}
 	if err := memory.Migrate(database); err != nil {
 		log.Fatalf("memory migrate: %v", err)
+	}
+	if err := skills.Migrate(database); err != nil {
+		log.Fatalf("skills migrate: %v", err)
 	}
 	g := memory.New(database)
 
@@ -102,6 +107,23 @@ func main() {
 		q := queue.New(database)
 		srv.SetQueue(q)
 		srv.RegisterUltronRoutes(database, g, q)
+
+		// Start MCP servers (soft failure — errors are logged, not fatal).
+		if len(cfg.MCPServers) > 0 {
+			mcpCfgs := make([]mcp.ServerConfig, len(cfg.MCPServers))
+			for i, sc := range cfg.MCPServers {
+				mcpCfgs[i] = mcp.ServerConfig{
+					Name:    sc.Name,
+					Command: sc.Command,
+					Args:    sc.Args,
+					Env:     sc.Env,
+					BaseURL: sc.BaseURL,
+				}
+			}
+			mgr := mcp.NewManager(mcpCfgs, ctx)
+			srv.SetMCPManager(mgr)
+			defer mgr.StopAll()
+		}
 
 		if cfg.EnableWorkers {
 			handler := func(hctx context.Context, task queue.Task) (string, error) {

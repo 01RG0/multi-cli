@@ -106,6 +106,18 @@ CREATE TABLE IF NOT EXISTS routing_rules (
     priority        INTEGER DEFAULT 0,
     created_at      INTEGER NOT NULL
 );
+
+-- User-defined reusable prompt templates (skills)
+CREATE TABLE IF NOT EXISTS skills (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL UNIQUE,
+    description     TEXT NOT NULL DEFAULT '',
+    prompt_template TEXT NOT NULL,
+    tools           JSON NOT NULL DEFAULT '[]',
+    agent_id        TEXT NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
 `)
 	if err != nil {
 		return err

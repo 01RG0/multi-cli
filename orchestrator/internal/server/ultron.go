@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/01rg0/orchestrator/internal/mcp"
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/queue"
+	"github.com/01rg0/orchestrator/internal/skills"
 )
 
 // ─── Memory endpoints ────────────────────────────────────────────────────────
@@ -584,4 +586,230 @@ func matchField(field string, value, min, _ int) bool {
 		}
 	}
 	return false
+}
+
+// ─── Skills endpoints ─────────────────────────────────────────────────────────
+
+func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "GET, POST") {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		list, err := skills.ListSkills(r.Context(), s.db)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(list)
+
+	case http.MethodPost:
+		var sk skills.Skill
+		if err := json.NewDecoder(r.Body).Decode(&sk); err != nil {
+			http.Error(w, "parse body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if sk.Name == "" || sk.PromptTemplate == "" {
+			http.Error(w, "name and prompt_template are required", http.StatusBadRequest)
+			return
+		}
+		id, err := skills.UpsertSkill(r.Context(), s.db, sk)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"id": id})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleSkillByID(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "GET, DELETE") {
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		sk, err := skills.GetSkill(r.Context(), s.db, id)
+		if err == sql.ErrNoRows {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(sk)
+
+	case http.MethodDelete:
+		if err := skills.DeleteSkill(r.Context(), s.db, id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleSkillRun(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.q == nil {
+		http.Error(w, "queue not enabled", http.StatusServiceUnavailable)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+	sk, err := skills.GetSkill(r.Context(), s.db, id)
+	if err == sql.ErrNoRows {
+		http.Error(w, "skill not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var body struct {
+		Input   string `json:"input"`
+		Context string `json:"context"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		// tolerate empty body
+		body.Input = ""
+	}
+
+	prompt := skills.RenderSkill(sk, body.Input, body.Context)
+	task := queue.Task{
+		Type:    "prompt",
+		AgentID: sk.AgentID,
+		Prompt:  prompt,
+	}
+	task.CreatedAt = time.Now().UnixMilli()
+	if err := s.q.Enqueue(r.Context(), task); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.Hub.Broadcast(map[string]any{
+		"type": "task_created",
+		"task": map[string]any{
+			"id":      task.ID,
+			"prompt":  prompt,
+			"status":  string(queue.StatusPending),
+			"agentId": task.AgentID,
+		},
+	})
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"task_id": task.ID})
+}
+
+// ─── MCP endpoints ────────────────────────────────────────────────────────────
+
+func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	type serverInfo struct {
+		Name      string `json:"name"`
+		Status    string `json:"status"`
+		ToolCount int    `json:"tool_count"`
+	}
+	var list []serverInfo
+	if s.mcpManager != nil {
+		for _, name := range s.mcpManager.ServerNames() {
+			c, _ := s.mcpManager.GetClient(name)
+			count := 0
+			if c != nil {
+				count = len(c.CachedTools())
+			}
+			list = append(list, serverInfo{Name: name, Status: "running", ToolCount: count})
+		}
+	}
+	if list == nil {
+		list = []serverInfo{}
+	}
+	json.NewEncoder(w).Encode(list)
+}
+
+func (s *Server) handleMCPServerTools(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.PathValue("name")
+	if name == "" {
+		http.Error(w, "missing server name", http.StatusBadRequest)
+		return
+	}
+	if s.mcpManager == nil {
+		json.NewEncoder(w).Encode([]any{})
+		return
+	}
+	c, ok := s.mcpManager.GetClient(name)
+	if !ok {
+		http.Error(w, "server not found", http.StatusNotFound)
+		return
+	}
+	tools := c.CachedTools()
+	if tools == nil {
+		tools = []mcp.Tool{}
+	}
+	json.NewEncoder(w).Encode(tools)
+}
+
+func (s *Server) handleMCPCall(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.mcpManager == nil {
+		http.Error(w, "MCP not configured", http.StatusServiceUnavailable)
+		return
+	}
+	var body struct {
+		Server string                 `json:"server"`
+		Tool   string                 `json:"tool"`
+		Input  map[string]interface{} `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "parse body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Server == "" || body.Tool == "" {
+		http.Error(w, "server and tool are required", http.StatusBadRequest)
+		return
+	}
+	result, err := s.mcpManager.CallTool(r.Context(), body.Server, body.Tool, body.Input)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"result": result})
 }

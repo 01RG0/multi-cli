@@ -10,9 +10,10 @@ import ProviderChain from './components/ProviderChain';
 import RoutingRulesBuilder from './components/RoutingRulesBuilder';
 import TerminalCommandPalette from './components/TerminalCommandPalette';
 import MemoryNeuralGraph from './components/MemoryNeuralGraph';
+import MCPSkillsPanel from './components/MCPSkillsPanel';
 import { ChatWidget } from './components/chat/ChatWidget';
 import { useSwarmStore } from './store/useSwarmStore';
-import { LayoutGrid, Network, ListOrdered, Terminal, Cpu, Sliders, Brain, MessageSquare } from 'lucide-react';
+import { LayoutGrid, Network, ListOrdered, Terminal, Cpu, Sliders, Brain, MessageSquare, Puzzle } from 'lucide-react';
 
 const TABS = [
   { id: 'cockpit',   label: 'ALL PANELS',      icon: LayoutGrid    },
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'agent',     label: 'AGENT INSPECTOR', icon: Cpu           },
   { id: 'providers', label: 'PROVIDER CHAIN',  icon: Sliders       },
   { id: 'memory',    label: 'MEMORY CORTEX',   icon: Brain         },
+  { id: 'mcp',       label: 'MCP & SKILLS',    icon: Puzzle        },
   { id: 'chat',      label: 'CHAT',            icon: MessageSquare },
 ] as const;
 
@@ -219,6 +221,13 @@ export function App() {
         {activeTab === 'memory' && (
           <div className="flex-1 min-h-0 animate-in fade-in zoom-in-95 duration-500">
             <MemoryNeuralGraph />
+          </div>
+        )}
+
+        {/* ── MCP & SKILLS ── */}
+        {activeTab === 'mcp' && (
+          <div className="flex-1 min-h-0 p-3 lg:p-4 animate-in fade-in zoom-in-95 duration-500">
+            <Panel className="h-full"><MCPSkillsPanel /></Panel>
           </div>
         )}
 
