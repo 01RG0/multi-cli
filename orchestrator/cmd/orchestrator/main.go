@@ -8,9 +8,15 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
+	"github.com/01rg0/orchestrator/internal/agent"
 	"github.com/01rg0/orchestrator/internal/config"
+	"github.com/01rg0/orchestrator/internal/db"
+	"github.com/01rg0/orchestrator/internal/improvement"
+	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
+	"github.com/01rg0/orchestrator/internal/queue"
 	"github.com/01rg0/orchestrator/internal/server"
 )
 
@@ -18,11 +24,14 @@ func main() {
 	loadDotEnv()
 
 	serve := false
+	workers := false
 	cfgPath := "config.yaml"
 	for _, arg := range os.Args[1:] {
 		switch arg {
 		case "--serve", "-serve", "serve":
 			serve = true
+		case "--workers", "-workers", "workers":
+			workers = true
 		default:
 			cfgPath = arg
 		}
@@ -32,6 +41,29 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	// --workers flag overrides config file setting.
+	if workers {
+		cfg.EnableWorkers = true
+	}
+
+	// Open SQLite database (shared by queue and memory graph).
+	database, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("db: %v", err)
+	}
+	defer database.Close()
+
+	// Migrate queue schema.
+	if err := db.Migrate(database); err != nil {
+		log.Fatalf("db migrate: %v", err)
+	}
+
+	// Migrate memory schema.
+	if err := memory.Migrate(database); err != nil {
+		log.Fatalf("memory migrate: %v", err)
+	}
+	g := memory.New(database)
 
 	providerMap := buildProviders(cfg)
 
@@ -52,8 +84,119 @@ func main() {
 
 	if serve || cfg.ProxyPort > 0 {
 		srv := server.New(router, cfg)
+		srv.SetProviderMap(providerMap)
+
+		// ctx is cancelled on SIGTERM/SIGINT so goroutines shut down cleanly.
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Build the known CLI agent map.
+		agentNames := []string{
+			"opencode", "codex", "vibe", "agy", "grok",
+			"kilo", "cline", "researcher", "debugger", "jules", "cursor",
+			"hermes", "deepseek", "harness", "kimocode", "pi",
+		}
+		agents := make(map[string]*agent.CLIAgent, len(agentNames))
+		for _, name := range agentNames {
+			agents[name] = agent.New(name, name, 5*time.Minute)
+		}
+
+		// Improvement loop: observe task outcomes and generate insights.
+		obs := improvement.NewObserver(200)
+		ref := improvement.NewReflector(3)
+		loop := improvement.NewLoop(obs, ref, 30*time.Second)
+
+		q := queue.New(database)
+		srv.SetQueue(q)
+
+		// Wire all Ultron API routes.
+		srv.RegisterUltronRoutes(database, g, q)
+
+		if cfg.EnableWorkers {
+			// Task handler: dispatches to the CLI agent named by task.AgentID/Type.
+			handler := func(hctx context.Context, task queue.Task) (string, error) {
+				agentKey := task.AgentID
+				if agentKey == "" {
+					agentKey = task.Type
+				}
+				a, ok := agents[agentKey]
+				if !ok {
+					a = agents["opencode"]
+				}
+
+				srv.Hub.Broadcast(map[string]any{
+					"type": "task_update",
+					"task": map[string]any{
+						"id":      task.ID,
+						"status":  string(queue.StatusRunning),
+						"agentId": task.AgentID,
+					},
+				})
+
+				result, runErr := a.Run(hctx, task.Prompt)
+				latencyMs := time.Now().UnixMilli() - task.StartedAt
+
+				if runErr != nil {
+					obs.Record(improvement.Observation{
+						AgentID:   task.AgentID,
+						TaskID:    task.ID,
+						Prompt:    task.Prompt,
+						Error:     runErr.Error(),
+						LatencyMs: latencyMs,
+					})
+					srv.Hub.Broadcast(map[string]any{
+						"type": "task_update",
+						"task": map[string]any{
+							"id":     task.ID,
+							"status": string(queue.StatusFailed),
+							"error":  runErr.Error(),
+						},
+					})
+					return "", runErr
+				}
+
+				obs.Record(improvement.Observation{
+					AgentID:   task.AgentID,
+					TaskID:    task.ID,
+					Prompt:    task.Prompt,
+					Result:    result,
+					LatencyMs: latencyMs,
+				})
+
+				// Log episode.
+				go func() {
+					g.AppendEpisode(context.Background(), memory.Episode{
+						AgentID: task.AgentID,
+						Kind:    "task",
+						Content: result,
+					})
+				}()
+
+				srv.Hub.Broadcast(map[string]any{
+					"type": "task_update",
+					"task": map[string]any{
+						"id":     task.ID,
+						"status": string(queue.StatusCompleted),
+					},
+				})
+				return result, nil
+			}
+
+			concurrency := cfg.Concurrency
+			if concurrency <= 0 {
+				concurrency = 4
+			}
+			wp := queue.NewWorkerPool(concurrency, q, handler)
+			go wp.Start(ctx)
+			go loop.Start(ctx)
+			log.Printf("workers: %d goroutines draining queue (db=%s)", concurrency, cfg.DBPath)
+		}
+
+		// Cron runner: ticks every 60 seconds, enqueues due jobs.
+		go runCronRunner(ctx, database, q, srv)
+
 		fmt.Printf("Proxy listening on :%d (chain: %v)\n", cfg.ProxyPort, cfg.FallbackChain)
 		fmt.Printf("Set ANTHROPIC_BASE_URL=http://localhost:%d to route Claude Code through this proxy.\n", cfg.ProxyPort)
+		fmt.Printf("Per-agent routing: ANTHROPIC_BASE_URL=http://localhost:%d/agent/<name>\n", cfg.ProxyPort)
 
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -66,6 +209,7 @@ func main() {
 
 		<-quit
 		fmt.Println("\nShutting down...")
+		cancel()
 		srv.Shutdown(context.Background())
 		return
 	}
