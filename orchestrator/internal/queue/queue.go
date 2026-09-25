@@ -51,7 +51,7 @@ func newID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())
 }
 
-func (q *Queue) Enqueue(ctx context.Context, t Task) error {
+func (q *Queue) Enqueue(ctx context.Context, t Task) (string, error) {
 	if t.ID == "" {
 		t.ID = newID()
 	}
@@ -66,7 +66,7 @@ func (q *Queue) Enqueue(ctx context.Context, t Task) error {
 		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Type, StatusPending, t.Priority, t.AgentID, t.Prompt, t.CreatedAt, t.Metadata, t.OriginalAgent, t.Attempt,
 	)
-	return err
+	return t.ID, err
 }
 
 // Dequeue atomically claims the highest-priority pending task.
@@ -218,4 +218,35 @@ func (q *Queue) Stats(ctx context.Context) (map[string]int, error) {
 		m[status] = count
 	}
 	return m, rows.Err()
+}
+
+// List returns all tasks ordered by created_at descending, limited to the most recent 200.
+func (q *Queue) List(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id, type, status, priority, agent_id, prompt, created_at, metadata, original_agent, attempt
+		 FROM tasks ORDER BY created_at DESC LIMIT 200`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tasks []Task
+	for rows.Next() {
+		var t Task
+		var origAgent, metadata *string
+		if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.Priority, &t.AgentID, &t.Prompt,
+			&t.CreatedAt, &metadata, &origAgent, &t.Attempt); err != nil {
+			return nil, err
+		}
+		if metadata != nil {
+			t.Metadata = *metadata
+		}
+		if origAgent != nil {
+			t.OriginalAgent = *origAgent
+		}
+		tasks = append(tasks, t)
+	}
+	if tasks == nil {
+		tasks = []Task{}
+	}
+	return tasks, rows.Err()
 }

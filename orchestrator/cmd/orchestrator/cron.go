@@ -62,7 +62,7 @@ func fireCronJobs(ctx context.Context, database *sql.DB, q *queue.Queue, srv *se
 			AgentID: j.AgentID,
 			Prompt:  j.Prompt,
 		}
-		if err := q.Enqueue(ctx, t); err != nil {
+		if _, err := q.Enqueue(ctx, t); err != nil {
 			log.Printf("cron: enqueue job %s: %v", j.ID, err)
 			continue
 		}

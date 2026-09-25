@@ -26,7 +26,7 @@ func TestEnqueueDequeue(t *testing.T) {
 	q := openTestDB(t)
 	ctx := context.Background()
 
-	err := q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "hello", Priority: 0})
+	_, err := q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "hello", Priority: 0})
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
@@ -49,9 +49,9 @@ func TestPriorityOrdering(t *testing.T) {
 	q := openTestDB(t)
 	ctx := context.Background()
 
-	q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "low", Priority: 0})
-	q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "high", Priority: 10})
-	q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "medium", Priority: 5})
+	_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "low", Priority: 0})
+	_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "high", Priority: 10})
+	_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "medium", Priority: 5})
 
 	ctx2, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -70,8 +70,8 @@ func TestCompleteAndFail(t *testing.T) {
 	q := openTestDB(t)
 	ctx := context.Background()
 
-	q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "test1"})
-	q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "test2"})
+	_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "test1"})
+	_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "test2"})
 
 	ctx2, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -98,7 +98,7 @@ func TestSuspendResume(t *testing.T) {
 	q := openTestDB(t)
 	ctx := context.Background()
 
-	q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "suspendable"})
+	_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "suspendable"})
 	ctx2, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -124,7 +124,7 @@ func TestWorkerPool(t *testing.T) {
 
 	// Enqueue 6 tasks
 	for i := 0; i < 6; i++ {
-		q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "task"})
+		_, _ = q.Enqueue(ctx, queue.Task{Type: "llm", Prompt: "task"})
 	}
 
 	processed := make(chan struct{}, 10)

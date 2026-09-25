@@ -66,7 +66,109 @@ func (s *Server) handleMemoryUpsert(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	n.ID = id
+	if s.Hub != nil {
+		s.Hub.Broadcast(map[string]any{
+			"type":   "memory_updated",
+			"action": "upsert",
+			"node":   n,
+		})
+	}
 	json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
+func (s *Server) handleMemoryGraph(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "GET") {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.graph == nil {
+		json.NewEncoder(w).Encode(map[string]any{"nodes": []any{}, "edges": []any{}})
+		return
+	}
+	nodes, edges, err := s.graph.GetGraph(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if nodes == nil {
+		nodes = []memory.Node{}
+	}
+	if edges == nil {
+		edges = []memory.Edge{}
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"nodes": nodes,
+		"edges": edges,
+	})
+}
+
+func (s *Server) handleMemoryNodeDelete(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "DELETE") {
+		return
+	}
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.graph == nil {
+		http.Error(w, "memory not enabled", http.StatusServiceUnavailable)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing node id", http.StatusBadRequest)
+		return
+	}
+	if err := s.graph.DeleteNode(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Hub != nil {
+		s.Hub.Broadcast(map[string]any{
+			"type":   "memory_updated",
+			"action": "delete",
+			"id":     id,
+		})
+	}
+	json.NewEncoder(w).Encode(map[string]string{"deleted": id})
+}
+
+func (s *Server) handleMemoryEdgeAdd(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.graph == nil {
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "memory not enabled"})
+		return
+	}
+	var e memory.Edge
+	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+		http.Error(w, "parse body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.graph.AddEdge(r.Context(), e); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if s.Hub != nil {
+		s.Hub.Broadcast(map[string]any{
+			"type":   "memory_updated",
+			"action": "edge_added",
+			"edge":   e,
+		})
+	}
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 func (s *Server) handleMemoryCore(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +208,35 @@ func (s *Server) handleMemoryCore(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMemoryEpisodes(w http.ResponseWriter, r *http.Request) {
 	corsJSON(w)
+	if handleCORSPreflight(w, r, "GET, POST") {
+		return
+	}
+	if r.Method == http.MethodPost {
+		if s.graph == nil {
+			http.Error(w, "memory not enabled", http.StatusServiceUnavailable)
+			return
+		}
+		var ep memory.Episode
+		if err := json.NewDecoder(r.Body).Decode(&ep); err != nil {
+			http.Error(w, "parse body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		id, err := s.graph.AppendEpisode(r.Context(), ep)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ep.ID = id
+		if s.Hub != nil {
+			s.Hub.Broadcast(map[string]any{
+				"type":    "memory_updated",
+				"action":  "upsert",
+				"episode": ep,
+			})
+		}
+		json.NewEncoder(w).Encode(map[string]string{"id": id})
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -218,10 +349,12 @@ func (s *Server) handleTaskRetry(w http.ResponseWriter, r *http.Request) {
 		Priority: orig.Priority,
 		Metadata: orig.Metadata,
 	}
-	if err := s.q.Enqueue(r.Context(), newTask); err != nil {
+	newTaskID, err := s.q.Enqueue(r.Context(), newTask)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	newTask.ID = newTaskID
 	s.Hub.Broadcast(map[string]any{
 		"type":    "task_created",
 		"id":      newTask.ID,
@@ -520,17 +653,27 @@ func (s *Server) handleFeedback(w http.ResponseWriter, r *http.Request) {
 		content, _ := json.Marshal(body)
 		go func() {
 			ctx := r.Context()
-			s.graph.AppendEpisode(ctx, memory.Episode{
+			ep := memory.Episode{
 				AgentID: body.AgentID,
 				Kind:    "feedback",
 				Content: string(content),
-			})
-			s.graph.UpsertNode(ctx, memory.Node{
+			}
+			s.graph.AppendEpisode(ctx, ep)
+			memNode := memory.Node{
 				Type:       "feedback",
 				Label:      "feedback:" + body.TaskID,
 				Source:     "user",
 				Confidence: 1.0,
-			})
+			}
+			nid, _ := s.graph.UpsertNode(ctx, memNode)
+			memNode.ID = nid
+			if s.Hub != nil {
+				s.Hub.Broadcast(map[string]any{
+					"type":   "memory_updated",
+					"action": "upsert",
+					"node":   memNode,
+				})
+			}
 		}()
 	}
 
@@ -706,10 +849,12 @@ func (s *Server) handleSkillRun(w http.ResponseWriter, r *http.Request) {
 		Prompt:  prompt,
 	}
 	task.CreatedAt = time.Now().UnixMilli()
-	if err := s.q.Enqueue(r.Context(), task); err != nil {
+	taskID, err := s.q.Enqueue(r.Context(), task)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	task.ID = taskID
 	s.Hub.Broadcast(map[string]any{
 		"type": "task_created",
 		"task": map[string]any{

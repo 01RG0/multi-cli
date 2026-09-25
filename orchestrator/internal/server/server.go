@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -30,6 +31,7 @@ type Server struct {
 	providerMap map[string]provider.Provider
 	mcpManager  *mcp.Manager // optional; nil when no MCP servers configured
 	logBuf      *logbuf.LogBuffer
+	uploadDir   string
 }
 
 // New creates a Server. g may be nil when memory is not needed (e.g. in tests).
@@ -138,13 +140,24 @@ func (s *Server) ServeLogs(w http.ResponseWriter, r *http.Request) {
 	s.handleAPILogs(w, r)
 }
 
-func (s *Server) Start() error {
+// Handler returns the configured http.Handler with all registered routes.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/messages", s.handleMessages)
 	mux.HandleFunc("/messages", s.handleMessages) // SDK compat
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/ws", s.Hub.ServeWS)
 	mux.HandleFunc("/api/logs", s.handleAPILogs)
+
+	// File uploads & static serving
+	mux.HandleFunc("/api/upload", s.handleUpload)
+	uploadDir := s.getUploadDir()
+	_ = os.MkdirAll(uploadDir, 0755)
+	fileServer := http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir)))
+	mux.HandleFunc("/uploads/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		fileServer.ServeHTTP(w, r)
+	})
 
 	// Per-agent provider routing: /agent/{agentId}/v1/messages
 	mux.HandleFunc("/agent/", s.handleAgentProxy)
@@ -159,6 +172,9 @@ func (s *Server) Start() error {
 		// Memory
 		mux.HandleFunc("/api/memory/search", s.handleMemorySearch)
 		mux.HandleFunc("/api/memory/upsert", s.handleMemoryUpsert)
+		mux.HandleFunc("/api/memory/graph", s.handleMemoryGraph)
+		mux.HandleFunc("/api/memory/nodes/{id}", s.handleMemoryNodeDelete)
+		mux.HandleFunc("/api/memory/edges", s.handleMemoryEdgeAdd)
 		mux.HandleFunc("/api/memory/core", s.handleMemoryCore)
 		mux.HandleFunc("/api/memory/episodes", s.handleMemoryEpisodes)
 
@@ -194,10 +210,14 @@ func (s *Server) Start() error {
 		mux.HandleFunc("/api/mcp/call", s.handleMCPCall)
 	}
 
+	return mux
+}
+
+func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.cfg.ProxyPort)
 	s.httpServer = &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      s.Handler(),
 		ReadTimeout:  120 * time.Second,
 		WriteTimeout: 180 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -261,16 +281,22 @@ func (s *Server) handleAPILogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
-// handleAPITasks returns queue stats as JSON.
+// handleAPITasks returns the full list of tasks as JSON (latest 200, desc).
 func (s *Server) handleAPITasks(w http.ResponseWriter, r *http.Request) {
-	stats, err := s.q.Stats(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	tasks, err := s.q.List(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	json.NewEncoder(w).Encode(stats)
+	json.NewEncoder(w).Encode(tasks)
 }
 
 // handleAPIEnqueue accepts a POST body with {agentId, prompt, priority, type}
@@ -302,10 +328,12 @@ func (s *Server) handleAPIEnqueue(w http.ResponseWriter, r *http.Request) {
 	}
 	t.CreatedAt = time.Now().UnixMilli()
 
-	if err := s.q.Enqueue(r.Context(), t); err != nil {
+	taskID, err := s.q.Enqueue(r.Context(), t)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	t.ID = taskID
 
 	// Broadcast task_created so all WS clients see it immediately.
 	s.Hub.Broadcast(map[string]any{
