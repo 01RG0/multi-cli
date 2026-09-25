@@ -732,19 +732,25 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type serverInfo struct {
-		Name      string `json:"name"`
-		Status    string `json:"status"`
-		ToolCount int    `json:"tool_count"`
+		Name      string     `json:"name"`
+		Status    string     `json:"status"`
+		ToolCount int        `json:"tool_count"`
+		Tools     []mcp.Tool `json:"tools"`
 	}
 	var list []serverInfo
 	if s.mcpManager != nil {
 		for _, name := range s.mcpManager.ServerNames() {
 			c, _ := s.mcpManager.GetClient(name)
 			count := 0
+			var tools []mcp.Tool
 			if c != nil {
-				count = len(c.CachedTools())
+				tools = c.CachedTools()
+				count = len(tools)
 			}
-			list = append(list, serverInfo{Name: name, Status: "running", ToolCount: count})
+			if tools == nil {
+				tools = []mcp.Tool{}
+			}
+			list = append(list, serverInfo{Name: name, Status: "running", ToolCount: count, Tools: tools})
 		}
 	}
 	if list == nil {

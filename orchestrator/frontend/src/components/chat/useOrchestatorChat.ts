@@ -242,6 +242,23 @@ const ULTRON_TOOLS = [
       required: ['task_id'],
     },
   },
+  {
+    name: 'run_skill',
+    description: 'Run a saved skill by name. Skills are reusable prompt templates that can dispatch tasks.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        skill_name: { type: 'string', description: 'Name of the skill to run' },
+        input: { type: 'string', description: 'Input parameter for the skill template' },
+      },
+      required: ['skill_name'],
+    },
+  },
+  {
+    name: 'list_skills',
+    description: 'List all available skills with their descriptions.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -250,7 +267,40 @@ const BASE = 'http://localhost:8080';
 
 async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
   try {
+    if (name.startsWith('mcp__')) {
+      const parts = name.split('__');
+      const serverName = parts[1];
+      const toolName = parts.slice(2).join('__');
+      const r = await fetch(`${BASE}/api/mcp/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ server: serverName, tool: toolName, input }),
+      });
+      return JSON.stringify(await r.json());
+    }
+
     switch (name) {
+      case 'run_skill': {
+        const skillName = (input['skill_name'] as string) ?? '';
+        const r = await fetch(`${BASE}/api/skills`);
+        const skillsList = await r.json();
+        const skill = Array.isArray(skillsList)
+          ? skillsList.find((s: { name: string; id: string }) => s.name === skillName)
+          : null;
+        if (!skill) {
+          return JSON.stringify({ error: `skill not found: ${skillName}` });
+        }
+        const runRes = await fetch(`${BASE}/api/skills/${skill.id}/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: (input['input'] as string) || '' }),
+        });
+        return JSON.stringify(await runRes.json());
+      }
+      case 'list_skills': {
+        const r = await fetch(`${BASE}/api/skills`);
+        return JSON.stringify(await r.json());
+      }
       case 'search_memory': {
         const r = await fetch(`${BASE}/api/memory/search?q=${encodeURIComponent(input['query'] as string)}&limit=${input['limit'] ?? 5}`);
         return JSON.stringify(await r.json());
@@ -471,6 +521,43 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
       setIsLoading(true);
 
       try {
+        // Fetch active MCP servers and tools to augment toolset
+        const activeTools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }> = [
+          ...ULTRON_TOOLS,
+        ];
+        try {
+          const mcpRes = await fetch(`${BASE}/api/mcp/servers`);
+          if (mcpRes.ok) {
+            const servers = await mcpRes.json();
+            if (Array.isArray(servers)) {
+              for (const server of servers) {
+                let tools = server.tools;
+                if (!tools && (server.tool_count ?? 0) > 0) {
+                  try {
+                    const tr = await fetch(`${BASE}/api/mcp/servers/${encodeURIComponent(server.name)}/tools`);
+                    if (tr.ok) {
+                      tools = await tr.json();
+                    }
+                  } catch {
+                    // ignore tool fetch errors
+                  }
+                }
+                if (Array.isArray(tools)) {
+                  for (const tool of tools) {
+                    activeTools.push({
+                      name: `mcp__${server.name}__${tool.name}`,
+                      description: tool.description || `MCP tool ${tool.name} from server ${server.name}`,
+                      input_schema: tool.input_schema || { type: 'object', properties: {} },
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // Gracefully fallback to standard ULTRON_TOOLS
+        }
+
         let continueLoop = true;
         const MAX_TURNS = 10; // prevent runaway loops
         let turns = 0;
@@ -483,7 +570,7 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             model:      'us.anthropic.claude-sonnet-4-6',
             max_tokens: 4096,
             system:     ULTRON_SYSTEM_PROMPT,
-            tools:      ULTRON_TOOLS,
+            tools:      activeTools,
             messages:   conversationRef.current,
           };
 
@@ -578,8 +665,8 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
                 ),
               );
 
-              // Check if dispatch_task returned a task ID — register for WS tracking
-              if (toolBlock.name === 'dispatch_task' || toolBlock.name === 'dispatch_pipeline') {
+              // Check if dispatch_task or run_skill returned a task ID — register for WS tracking
+              if (toolBlock.name === 'dispatch_task' || toolBlock.name === 'dispatch_pipeline' || toolBlock.name === 'run_skill') {
                 try {
                   const parsed = JSON.parse(result) as unknown;
                   const extractIds = (obj: unknown): void => {
@@ -587,12 +674,13 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
                       obj.forEach(extractIds);
                     } else if (obj && typeof obj === 'object') {
                       const rec = obj as Record<string, unknown>;
-                      if (typeof rec['id'] === 'string') {
-                        const taskId = rec['id'] as string;
+                      const idVal = rec['id'] ?? rec['task_id'];
+                      if (typeof idVal === 'string') {
+                        const taskId = idVal;
                         dispatchedTaskIds.current.add(taskId);
                         // Add inline task card
-                        const agentIdVal = (toolBlock.input['agent_id'] as string) ?? 'unknown';
-                        const promptVal  = (toolBlock.input['prompt'] as string) ?? '';
+                        const agentIdVal = (toolBlock.input['agent_id'] as string) ?? (toolBlock.name === 'run_skill' ? (toolBlock.input['skill_name'] as string) : 'unknown');
+                        const promptVal  = (toolBlock.input['prompt'] as string) ?? (toolBlock.input['input'] as string) ?? '';
                         const taskCardId = uid();
                         const taskCard: ChatMessage = {
                           id:        taskCardId,
