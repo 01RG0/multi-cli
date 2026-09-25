@@ -1,5 +1,4 @@
-import { useEffect, Component, type ReactNode } from 'react'
-import useWebSocket, { ReadyState } from 'react-use-websocket'
+import { useEffect, useRef, useState, useCallback, Component, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -24,25 +23,51 @@ import StatsPanel from './components/StatsPanel'
 const WS_URL = import.meta.env.VITE_WS_URL ??
   `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
+function useWS(url: string, onMessage: (data: unknown) => void) {
+  const ws = useRef<WebSocket | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [connected, setConnected] = useState(false)
+  const onMsg = useRef(onMessage)
+  onMsg.current = onMessage
+
+  const connect = useCallback(() => {
+    if (ws.current?.readyState === WebSocket.OPEN) return
+    const sock = new WebSocket(url)
+    ws.current = sock
+    sock.onopen = () => setConnected(true)
+    sock.onclose = () => {
+      setConnected(false)
+      timer.current = setTimeout(connect, 3000)
+    }
+    sock.onerror = () => sock.close()
+    sock.onmessage = (e) => {
+      try { onMsg.current(JSON.parse(e.data)) } catch {}
+    }
+  }, [url])
+
+  useEffect(() => {
+    connect()
+    return () => {
+      if (timer.current) clearTimeout(timer.current)
+      ws.current?.close()
+    }
+  }, [connect])
+
+  return connected
+}
+
 export default function App() {
   const applyEvent = useStore((s) => s.applyEvent)
   const setWsConnected = useStore((s) => s.setWsConnected)
   const wsConnected = useStore((s) => s.wsConnected)
 
-  const { lastJsonMessage, readyState } = useWebSocket(WS_URL, {
-    shouldReconnect: () => true,
-    reconnectInterval: 3000,
+  const connected = useWS(WS_URL, (data) => {
+    applyEvent(data as WsEvent)
   })
 
   useEffect(() => {
-    setWsConnected(readyState === ReadyState.OPEN)
-  }, [readyState, setWsConnected])
-
-  useEffect(() => {
-    if (lastJsonMessage) {
-      applyEvent(lastJsonMessage as WsEvent)
-    }
-  }, [lastJsonMessage, applyEvent])
+    setWsConnected(connected)
+  }, [connected, setWsConnected])
 
   return (
     <ErrorBoundary>

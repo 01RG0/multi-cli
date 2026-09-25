@@ -5,23 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Agent Orchestrator</title>
-    <script type="module" crossorigin src="/assets/index-CZlS3scx.js"></script>
+    <script type="module" crossorigin src="/assets/index-DMb4yvd7.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-XsYvAbCW.css">
   </head>
   <body>
     <div id="root"></div>
     <div id="err" style="display:none;position:fixed;top:0;left:0;right:0;background:#1a0000;color:#f87171;padding:16px;font:12px monospace;z-index:9999;white-space:pre-wrap;max-height:50vh;overflow:auto"></div>
     <script>
-      window.onerror = function(msg, src, line, col, err) {
-        var d = document.getElementById('err');
-        d.style.display = 'block';
-        d.textContent = 'JS ERROR: ' + msg + '\n' + (err && err.stack ? err.stack : '') + '\nsrc: ' + src + ':' + line;
-      };
-      window.addEventListener('unhandledrejection', function(e) {
-        var d = document.getElementById('err');
-        d.style.display = 'block';
-        d.textContent += '\nPromise rejection: ' + (e.reason && e.reason.stack ? e.reason.stack : e.reason);
-      });
+      window.onerror=function(m,s,l,c,e){var d=document.getElementById('err');d.style.display='block';d.textContent='ERROR: '+m+'\n'+(e&&e.stack?e.stack:'')+'\n'+s+':'+l};
+      window.addEventListener('unhandledrejection',function(e){var d=document.getElementById('err');d.style.display='block';d.textContent+='\nPromise: '+(e.reason&&e.reason.stack?e.reason.stack:e.reason)});
     </script>
   </body>
 </html>
