@@ -4,3 +4,7 @@ export { TaskProgressCard } from './TaskProgressCard';
 export type { TaskProgressCardProps, TaskStep } from './TaskProgressCard';
 export { CommandSuggestions } from './CommandSuggestions';
 export type { CommandSuggestionsProps } from './CommandSuggestions';
+export { ChatWidget } from './ChatWidget';
+export { useOrchestatorChat } from './useOrchestatorChat';
+export type { ChatMessage, ChatSession, ToolUseBlock, UseOrchestatorChatReturn } from './useOrchestatorChat';
+export { ULTRON_SYSTEM_PROMPT } from './ultronPrompt';

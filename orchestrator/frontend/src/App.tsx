@@ -10,17 +10,19 @@ import ProviderChain from './components/ProviderChain';
 import RoutingRulesBuilder from './components/RoutingRulesBuilder';
 import TerminalCommandPalette from './components/TerminalCommandPalette';
 import MemoryNeuralGraph from './components/MemoryNeuralGraph';
+import { ChatWidget } from './components/chat/ChatWidget';
 import { useSwarmStore } from './store/useSwarmStore';
-import { LayoutGrid, Network, ListOrdered, Terminal, Cpu, Sliders, Brain } from 'lucide-react';
+import { LayoutGrid, Network, ListOrdered, Terminal, Cpu, Sliders, Brain, MessageSquare } from 'lucide-react';
 
 const TABS = [
-  { id: 'cockpit',   label: 'ALL PANELS',      icon: LayoutGrid },
-  { id: 'swarm',     label: 'SWARM TOPOLOGY',  icon: Network },
-  { id: 'tasks',     label: 'TASK QUEUE',      icon: ListOrdered },
-  { id: 'logs',      label: 'LIVE TELEMETRY',  icon: Terminal },
-  { id: 'agent',     label: 'AGENT INSPECTOR', icon: Cpu },
-  { id: 'providers', label: 'PROVIDER CHAIN',  icon: Sliders },
-  { id: 'memory',    label: 'MEMORY CORTEX',   icon: Brain },
+  { id: 'cockpit',   label: 'ALL PANELS',      icon: LayoutGrid    },
+  { id: 'swarm',     label: 'SWARM TOPOLOGY',  icon: Network       },
+  { id: 'tasks',     label: 'TASK QUEUE',      icon: ListOrdered   },
+  { id: 'logs',      label: 'LIVE TELEMETRY',  icon: Terminal      },
+  { id: 'agent',     label: 'AGENT INSPECTOR', icon: Cpu           },
+  { id: 'providers', label: 'PROVIDER CHAIN',  icon: Sliders       },
+  { id: 'memory',    label: 'MEMORY CORTEX',   icon: Brain         },
+  { id: 'chat',      label: 'CHAT',            icon: MessageSquare },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -74,17 +76,10 @@ export function App() {
     return (TABS.some(t => t.id === saved) ? saved : 'cockpit') as TabId;
   });
 
+  // New task dispatching now routes through the Ultron chat
   const handleNewTask = () => {
-    const prompt = window.prompt('Enter task prompt for swarm:');
-    if (prompt) {
-      store.addTask({
-        agentId: store.selectedAgentId || 'opencode',
-        prompt,
-        status: 'running',
-        priority: 7,
-        latencyMs: 160,
-      });
-    }
+    setActiveTab('chat');
+    localStorage.setItem('ultron_active_tab', 'chat');
   };
 
   return (
@@ -224,6 +219,13 @@ export function App() {
         {activeTab === 'memory' && (
           <div className="flex-1 min-h-0 animate-in fade-in zoom-in-95 duration-500">
             <MemoryNeuralGraph />
+          </div>
+        )}
+
+        {/* ── CHAT: Ultron agentic interface — primary task entry point ── */}
+        {activeTab === 'chat' && (
+          <div className="flex-1 min-h-0 animate-in fade-in zoom-in-95 duration-500">
+            <ChatWidget />
           </div>
         )}
 
