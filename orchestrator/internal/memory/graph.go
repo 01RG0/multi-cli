@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math/rand"
 	"sort"
 	"strings"
@@ -43,14 +44,14 @@ type Node struct {
 
 // Edge represents a temporal directed edge.
 type Edge struct {
-	ID       string
-	Src      string
-	Dst      string
-	Relation string
-	Weight   float64
-	ValidAt  int64
+	ID        string
+	Src       string
+	Dst       string
+	Relation  string
+	Weight    float64
+	ValidAt   int64
 	InvalidAt *int64
-	Metadata string
+	Metadata  string
 }
 
 // Episode represents an append-only log entry.
@@ -85,8 +86,24 @@ func uniqueID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixNano(), rand.Int63n(1_000_000))
 }
 
-// UpsertNode inserts or updates a node. If a node with the same label+type
-// already exists (similarity threshold 0.85 by label match), it is updated.
+// upsertVecNode inserts or replaces a row in vec_nodes. Soft-fails (log+return).
+func (g *Graph) upsertVecNode(ctx context.Context, nodeID string, emb []float32) {
+	blob := vecSerialize(emb)
+	if _, err := g.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO vec_nodes(node_id, embedding) VALUES (?, ?)`,
+		nodeID, blob,
+	); err != nil {
+		log.Printf("memory: vec_nodes upsert for %s: %v", nodeID, err)
+	}
+}
+
+// UpsertNode inserts or updates a node.
+// Dedup order (Step 7):
+//  1. Exact label+type match — fast, no embedding needed.
+//  2. Embedding-similarity dedup — cosine similarity > 0.85 (only when Ollama available).
+//  3. Insert new node.
+//
+// Embedding is computed via Ollama nomic-embed-text (soft-fail: nil when unreachable).
 func (g *Graph) UpsertNode(ctx context.Context, n Node) (string, error) {
 	if n.ID == "" {
 		n.ID = uniqueID("n")
@@ -97,29 +114,103 @@ func (g *Graph) UpsertNode(ctx context.Context, n Node) (string, error) {
 	}
 	n.UpdatedAt = now
 
-	// Check for existing node with same label+type
+	// Compute embedding for this label (soft-fail: nil if Ollama unavailable)
+	emb, _ := EmbedLabel(ctx, n.Label)
+
+	// --- 1) Exact label+type match (fast path, no embedding needed) ---
 	var existingID string
 	err := g.db.QueryRowContext(ctx,
 		`SELECT id FROM nodes WHERE label=? AND type=? LIMIT 1`, n.Label, n.Type,
 	).Scan(&existingID)
 	if err == nil {
-		// Update existing
+		// Update existing node
 		_, err = g.db.ExecContext(ctx,
 			`UPDATE nodes SET source=?, confidence=?, embedding=?, updated_at=? WHERE id=?`,
 			n.Source, n.Confidence, n.Embedding, now, existingID,
 		)
-		return existingID, err
+		if err != nil {
+			return existingID, err
+		}
+		// Refresh embedding in vec_nodes
+		if emb != nil {
+			g.upsertVecNode(ctx, existingID, emb)
+		}
+		return existingID, nil
 	}
 	if err != sql.ErrNoRows {
 		return "", err
 	}
 
+	// --- 2) Embedding similarity dedup (threshold cosine similarity > 0.85) ---
+	if emb != nil {
+		closestID, closestSim := g.vecClosest(ctx, emb, 1)
+		if closestID != "" && closestSim > 0.85 {
+			// Close-enough match — update it
+			_, err = g.db.ExecContext(ctx,
+				`UPDATE nodes SET source=?, confidence=?, embedding=?, updated_at=? WHERE id=?`,
+				n.Source, n.Confidence, n.Embedding, now, closestID,
+			)
+			if err != nil {
+				return closestID, err
+			}
+			g.upsertVecNode(ctx, closestID, emb)
+			return closestID, nil
+		}
+	}
+
+	// --- 3) Insert new node ---
 	_, err = g.db.ExecContext(ctx,
 		`INSERT INTO nodes (id,label,type,source,confidence,embedding,created_at,updated_at)
 		 VALUES (?,?,?,?,?,?,?,?)`,
 		n.ID, n.Label, n.Type, n.Source, n.Confidence, n.Embedding, n.CreatedAt, n.UpdatedAt,
 	)
-	return n.ID, err
+	if err != nil {
+		return "", err
+	}
+	if emb != nil {
+		g.upsertVecNode(ctx, n.ID, emb)
+	}
+	return n.ID, nil
+}
+
+// vecClosest returns the node_id and cosine similarity of the closest embedding
+// in vec_nodes, scanning all rows. Returns ("", 0) if table is empty or on error.
+func (g *Graph) vecClosest(ctx context.Context, query []float32, topK int) (string, float64) {
+	rows, err := g.db.QueryContext(ctx, `SELECT node_id, embedding FROM vec_nodes`)
+	if err != nil {
+		return "", 0
+	}
+	defer rows.Close()
+
+	type hit struct {
+		id  string
+		sim float64
+	}
+	var hits []hit
+	for rows.Next() {
+		var nodeID string
+		var blob []byte
+		if err := rows.Scan(&nodeID, &blob); err != nil {
+			continue
+		}
+		v := vecDeserialize(blob)
+		if v == nil {
+			continue
+		}
+		sim := cosineSimilarity(query, v)
+		hits = append(hits, hit{id: nodeID, sim: sim})
+	}
+	if err := rows.Err(); err != nil {
+		return "", 0
+	}
+	if len(hits) == 0 {
+		return "", 0
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].sim > hits[j].sim })
+	if topK > 0 && len(hits) > topK {
+		hits = hits[:topK]
+	}
+	return hits[0].id, hits[0].sim
 }
 
 // AddEdge inserts a temporal edge. Pass InvalidAt=nil for active edges.
@@ -161,11 +252,15 @@ func (g *Graph) AppendEpisode(ctx context.Context, ep Episode) (string, error) {
 	return ep.ID, err
 }
 
-// Search performs hybrid search: BM25 FTS5 + source-authority RRF.
-// query is the text query; limit caps results.
+// Search performs hybrid search: BM25 FTS5 + cosine-similarity RRF leg.
+// Public signature is unchanged: (ctx, query, limit). The cosine leg is
+// computed in-process via Ollama embeddings; if Ollama is unreachable the
+// function falls back to BM25-only — no error is returned in that case.
 func (g *Graph) Search(ctx context.Context, query string, limit int) ([]SearchResult, error) {
-	// BM25 via FTS5
-	rows, err := g.db.QueryContext(ctx, `
+	const k = 60.0
+
+	// --- BM25 leg via FTS5 ---
+	bm25Rows, err := g.db.QueryContext(ctx, `
 		SELECT n.id, n.label, n.type, n.source, n.confidence, n.embedding, n.created_at, n.updated_at,
 		       bm25(nodes_fts) AS bm25_score
 		FROM nodes_fts
@@ -177,36 +272,54 @@ func (g *Graph) Search(ctx context.Context, query string, limit int) ([]SearchRe
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer bm25Rows.Close()
 
-	type candidate struct {
-		node     Node
-		bm25Rank int
-	}
-	var candidates []candidate
-	rank := 0
-	for rows.Next() {
+	// nodeID -> Node (union set)
+	nodeMap := map[string]Node{}
+	// nodeID -> bm25Rank (absent = not in BM25 results)
+	bm25RankMap := map[string]int{}
+
+	bm25Rank := 0
+	for bm25Rows.Next() {
 		var n Node
 		var bm25Score float64
-		if err := rows.Scan(&n.ID, &n.Label, &n.Type, &n.Source, &n.Confidence, &n.Embedding,
+		if err := bm25Rows.Scan(&n.ID, &n.Label, &n.Type, &n.Source, &n.Confidence, &n.Embedding,
 			&n.CreatedAt, &n.UpdatedAt, &bm25Score); err != nil {
 			return nil, err
 		}
-		candidates = append(candidates, candidate{node: n, bm25Rank: rank})
-		rank++
+		nodeMap[n.ID] = n
+		bm25RankMap[n.ID] = bm25Rank
+		bm25Rank++
 	}
-	if err := rows.Err(); err != nil {
+	if err := bm25Rows.Err(); err != nil {
 		return nil, err
 	}
 
-	// RRF fusion with source-authority weighting
-	const k = 60.0
-	results := make([]SearchResult, 0, len(candidates))
-	for _, c := range candidates {
-		rrfScore := 1.0 / (k + float64(c.bm25Rank))
-		authority := sourceWeight(c.node.Source)
-		score := rrfScore * authority * c.node.Confidence
-		results = append(results, SearchResult{Node: c.node, Score: score})
+	// --- Cosine similarity (vec) leg ---
+	// vecRankMap: nodeID -> rank (0-based, sorted by similarity descending)
+	vecRankMap := map[string]int{}
+
+	queryEmb, _ := EmbedLabel(ctx, query) // soft-fail: nil when Ollama unavailable
+	if queryEmb != nil {
+		vecRankMap = g.vecRankedSearch(ctx, queryEmb, limit*3, nodeMap)
+	}
+
+	// --- RRF fusion ---
+	const bigRank = 1_000_000 // placeholder for "not in this leg"
+	results := make([]SearchResult, 0, len(nodeMap))
+	for id, n := range nodeMap {
+		br, bOK := bm25RankMap[id]
+		if !bOK {
+			br = bigRank
+		}
+		vr, vOK := vecRankMap[id]
+		if !vOK {
+			vr = bigRank
+		}
+		rrfScore := 1.0/(k+float64(br)) + 1.0/(k+float64(vr))
+		authority := sourceWeight(n.Source)
+		score := rrfScore * authority * n.Confidence
+		results = append(results, SearchResult{Node: n, Score: score})
 	}
 
 	sort.Slice(results, func(i, j int) bool { return results[i].Score > results[j].Score })
@@ -214,6 +327,63 @@ func (g *Graph) Search(ctx context.Context, query string, limit int) ([]SearchRe
 		results = results[:limit]
 	}
 	return results, nil
+}
+
+// vecRankedSearch computes cosine similarity between queryEmb and all rows in vec_nodes,
+// returns a nodeID -> rank map (sorted by similarity descending). Also enriches nodeMap
+// with nodes found in vec_nodes but not in BM25 results.
+func (g *Graph) vecRankedSearch(ctx context.Context, queryEmb []float32, topK int, nodeMap map[string]Node) map[string]int {
+	rows, err := g.db.QueryContext(ctx, `SELECT node_id, embedding FROM vec_nodes`)
+	if err != nil {
+		log.Printf("memory: vec_rankedSearch query: %v", err)
+		return map[string]int{}
+	}
+	defer rows.Close()
+
+	type hit struct {
+		id  string
+		sim float64
+	}
+	var hits []hit
+	for rows.Next() {
+		var nodeID string
+		var blob []byte
+		if err := rows.Scan(&nodeID, &blob); err != nil {
+			continue
+		}
+		v := vecDeserialize(blob)
+		if v == nil {
+			continue
+		}
+		sim := cosineSimilarity(queryEmb, v)
+		hits = append(hits, hit{id: nodeID, sim: sim})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("memory: vec_rankedSearch scan: %v", err)
+		return map[string]int{}
+	}
+
+	sort.Slice(hits, func(i, j int) bool { return hits[i].sim > hits[j].sim })
+	if topK > 0 && len(hits) > topK {
+		hits = hits[:topK]
+	}
+
+	rankMap := make(map[string]int, len(hits))
+	for rank, h := range hits {
+		rankMap[h.id] = rank
+		// If this node isn't in the BM25 results, load it for the union
+		if _, ok := nodeMap[h.id]; !ok {
+			var n Node
+			err := g.db.QueryRowContext(ctx,
+				`SELECT id, label, type, source, confidence, embedding, created_at, updated_at FROM nodes WHERE id=?`,
+				h.id,
+			).Scan(&n.ID, &n.Label, &n.Type, &n.Source, &n.Confidence, &n.Embedding, &n.CreatedAt, &n.UpdatedAt)
+			if err == nil {
+				nodeMap[h.id] = n
+			}
+		}
+	}
+	return rankMap
 }
 
 // BFSNeighbors returns nodes reachable from startID within maxDepth hops.

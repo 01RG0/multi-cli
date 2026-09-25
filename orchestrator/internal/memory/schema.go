@@ -86,5 +86,18 @@ CREATE TABLE IF NOT EXISTS core_memory (
     updated_at INTEGER NOT NULL DEFAULT 0
 );
 `)
+	if err != nil {
+		return err
+	}
+	// vec_nodes: pure-Go cosine-similarity table.
+	// sqlite-vec (vec0 virtual table) requires CGO or a loadable extension, neither of which is available
+	// with modernc.org/sqlite. We store serialized little-endian float32 blobs (384 dims = nomic-embed-text)
+	// in a plain table and do cosine similarity in Go inside Search() / UpsertNode().
+	_, err = db.Exec(`
+CREATE TABLE IF NOT EXISTS vec_nodes (
+    node_id   TEXT PRIMARY KEY,
+    embedding BLOB NOT NULL
+);
+`)
 	return err
 }
