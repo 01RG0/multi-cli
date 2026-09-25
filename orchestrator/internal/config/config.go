@@ -46,6 +46,10 @@ type Config struct {
 	DBPath          string           `yaml:"db_path"`
 	Concurrency     int              `yaml:"concurrency"`
 	Tools           ToolsConfig      `yaml:"tools"`
+	// EnableWorkers starts the queue worker pool, improvement loop, and DB migrations.
+	// Defaults to false so existing tests are unaffected; set to true in config.yaml
+	// or pass --workers flag to activate.
+	EnableWorkers   bool             `yaml:"enable_workers"`
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)

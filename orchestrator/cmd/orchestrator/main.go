@@ -8,9 +8,15 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
+	"github.com/01rg0/orchestrator/internal/agent"
 	"github.com/01rg0/orchestrator/internal/config"
+	"github.com/01rg0/orchestrator/internal/db"
+	"github.com/01rg0/orchestrator/internal/improvement"
+	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
+	"github.com/01rg0/orchestrator/internal/queue"
 	"github.com/01rg0/orchestrator/internal/server"
 )
 
@@ -18,11 +24,14 @@ func main() {
 	loadDotEnv()
 
 	serve := false
+	workers := false
 	cfgPath := "config.yaml"
 	for _, arg := range os.Args[1:] {
 		switch arg {
 		case "--serve", "-serve", "serve":
 			serve = true
+		case "--workers", "-workers", "workers":
+			workers = true
 		default:
 			cfgPath = arg
 		}
@@ -31,6 +40,11 @@ func main() {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	// --workers flag overrides config file setting.
+	if workers {
+		cfg.EnableWorkers = true
 	}
 
 	providerMap := buildProviders(cfg)
@@ -52,8 +66,97 @@ func main() {
 
 	if serve || cfg.ProxyPort > 0 {
 		srv := server.New(router, cfg)
+
+		// ctx is cancelled on SIGTERM/SIGINT so goroutines shut down cleanly.
+		ctx, cancel := context.WithCancel(context.Background())
+
+		if cfg.EnableWorkers {
+			sqlDB, err := db.Open(cfg.DBPath)
+			if err != nil {
+				log.Fatalf("db open: %v", err)
+			}
+			if err := db.Migrate(sqlDB); err != nil {
+				log.Fatalf("db migrate: %v", err)
+			}
+			if err := memory.Migrate(sqlDB); err != nil {
+				log.Fatalf("memory migrate: %v", err)
+			}
+
+			q := queue.New(sqlDB)
+
+			// Wire queue to server for /api/tasks, /api/tasks/enqueue, and init snapshot.
+			srv.SetQueue(q)
+
+			// Improvement loop: observe task outcomes and generate insights.
+			obs := improvement.NewObserver(200)
+			ref := improvement.NewReflector(3)
+			loop := improvement.NewLoop(obs, ref, 30*time.Second)
+			go loop.Start(ctx)
+
+			// Task handler: dispatches to the CLI agent named by task.AgentID.
+			handler := func(ctx context.Context, t queue.Task) (string, error) {
+				// Broadcast task.started so connected dashboards see it live.
+				srv.Hub.Broadcast(map[string]any{
+					"type": "task_update",
+					"task": map[string]any{
+						"id":      t.ID,
+						"status":  string(queue.StatusRunning),
+						"agentId": t.AgentID,
+					},
+				})
+
+				a := agent.New(t.AgentID, t.AgentID, 5*time.Minute)
+				result, runErr := a.Run(ctx, t.Prompt)
+
+				latencyMs := time.Now().UnixMilli() - t.StartedAt
+
+				if runErr != nil {
+					obs.Record(improvement.Observation{
+						AgentID:   t.AgentID,
+						TaskID:    t.ID,
+						Prompt:    t.Prompt,
+						Error:     runErr.Error(),
+						LatencyMs: latencyMs,
+					})
+					srv.Hub.Broadcast(map[string]any{
+						"type": "task_update",
+						"task": map[string]any{
+							"id":      t.ID,
+							"status":  string(queue.StatusFailed),
+							"error":   runErr.Error(),
+						},
+					})
+					return "", runErr
+				}
+
+				obs.Record(improvement.Observation{
+					AgentID:   t.AgentID,
+					TaskID:    t.ID,
+					Prompt:    t.Prompt,
+					Result:    result,
+					LatencyMs: latencyMs,
+				})
+				srv.Hub.Broadcast(map[string]any{
+					"type": "task_update",
+					"task": map[string]any{
+						"id":     t.ID,
+						"status": string(queue.StatusCompleted),
+					},
+				})
+				return result, nil
+			}
+
+			wp := queue.NewWorkerPool(cfg.Concurrency, q, handler)
+			go wp.Start(ctx)
+
+			log.Printf("workers: %d goroutines draining queue (db=%s)", cfg.Concurrency, cfg.DBPath)
+		}
+
 		fmt.Printf("Proxy listening on :%d (chain: %v)\n", cfg.ProxyPort, cfg.FallbackChain)
 		fmt.Printf("Set ANTHROPIC_BASE_URL=http://localhost:%d to route Claude Code through this proxy.\n", cfg.ProxyPort)
+		if cfg.EnableWorkers {
+			fmt.Printf("Workers enabled: queue at %s, concurrency=%d\n", cfg.DBPath, cfg.Concurrency)
+		}
 
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -66,6 +169,7 @@ func main() {
 
 		<-quit
 		fmt.Println("\nShutting down...")
+		cancel() // stop worker pool and improvement loop goroutines
 		srv.Shutdown(context.Background())
 		return
 	}
