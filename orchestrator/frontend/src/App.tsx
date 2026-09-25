@@ -1,13 +1,28 @@
-import { useEffect } from 'react'
+import { useEffect, Component, type ReactNode } from 'react'
 import useWebSocket, { ReadyState } from 'react-use-websocket'
 import { motion } from 'framer-motion'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null }
+  static getDerivedStateFromError(e: Error) { return { error: e.message } }
+  render() {
+    if (this.state.error) return (
+      <div style={{ color: '#f87171', padding: 32, fontFamily: 'monospace', background: '#0f172a', minHeight: '100vh' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>React render error</div>
+        <pre style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'pre-wrap' }}>{this.state.error}</pre>
+      </div>
+    )
+    return this.props.children
+  }
+}
 import { useStore } from './store/useStore'
 import type { WsEvent } from './store/useStore'
 import BrainGraph from './components/BrainGraph'
 import LiveFeed from './components/LiveFeed'
 import StatsPanel from './components/StatsPanel'
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws'
+const WS_URL = import.meta.env.VITE_WS_URL ??
+  `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
 export default function App() {
   const applyEvent = useStore((s) => s.applyEvent)
@@ -30,6 +45,7 @@ export default function App() {
   }, [lastJsonMessage, applyEvent])
 
   return (
+    <ErrorBoundary>
     <div
       style={{
         minHeight: '100vh',
@@ -149,6 +165,7 @@ export default function App() {
         </motion.div>
       </div>
     </div>
+    </ErrorBoundary>
   )
 }
 
