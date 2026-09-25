@@ -2,18 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../store/useStore'
 
-const FALLBACK_AGENTS = [
-  'opencode', 'agy', 'grok', 'cline', 'vibe', 'codex', 'kilo',
-]
+const PROVIDERS = ['groq', 'apmix', 'bedrock', 'tokenharbor', 'codecraft', 'aihubmix', 'ollama', 'anthropic']
+const FALLBACK_AGENTS = ['opencode', 'agy', 'grok', 'cline', 'vibe', 'codex', 'kilo']
 
-const PROVIDERS = [
-  'groq', 'apmix', 'bedrock', 'tokenharbor', 'codecraft', 'aihubmix', 'ollama', 'anthropic',
-]
+const STATS = [
+  { key: 'running',   label: 'Running',   color: '#eab308', bg: 'rgba(234,179,8,0.08)',   icon: '▶' },
+  { key: 'pending',   label: 'Pending',   color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', icon: '○' },
+  { key: 'completed', label: 'Done',      color: '#22c55e', bg: 'rgba(34,197,94,0.08)',   icon: '✓' },
+  { key: 'failed',    label: 'Failed',    color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   icon: '✗' },
+] as const
 
-interface AgentNode {
-  id?: string
-  name?: string
-  status?: string
+function agentColor(s?: string) {
+  if (s === 'working') return '#eab308'
+  if (s === 'error') return '#ef4444'
+  return '#22c55e'
 }
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -21,239 +23,120 @@ function AnimatedNumber({ value }: { value: number }) {
     <AnimatePresence mode="wait">
       <motion.span
         key={value}
-        initial={{ opacity: 0, y: -8 }}
+        initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 8 }}
-        transition={{ duration: 0.25 }}
+        exit={{ opacity: 0, y: 6 }}
+        transition={{ duration: 0.2 }}
         style={{ display: 'inline-block' }}
-      >
-        {value}
-      </motion.span>
+      >{value}</motion.span>
     </AnimatePresence>
   )
 }
 
-const STAT_CARDS = [
-  { key: 'running',   label: 'Running',   icon: '▶',  color: '#facc15', bg: '#1e1a08' },
-  { key: 'pending',   label: 'Pending',   icon: '⏳', color: '#94a3b8', bg: '#161b22' },
-  { key: 'completed', label: 'Completed', icon: '✓',  color: '#4ade80', bg: '#0a1f14' },
-  { key: 'failed',    label: 'Failed',    icon: '✗',  color: '#f87171', bg: '#1f0a0a' },
-  { key: 'suspended', label: 'Suspended', icon: '⏸',  color: '#fb923c', bg: '#1f1208' },
-] as const
-
 function SvgSparkline({ data }: { data: number[] }) {
-  const w = 188, h = 56
+  const w = 168, h = 40
   const max = Math.max(...data, 1)
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w
-    const y = h - (v / max) * (h - 4) - 2
-    return `${x},${y}`
-  }).join(' ')
-  const area = `0,${h} ` + pts + ` ${w},${h}`
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - (v / max) * (h - 4) - 2}`).join(' ')
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: 'block' }}>
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: 'block', opacity: 0.9 }}>
       <defs>
-        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
+        <linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity={0.5} />
           <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
         </linearGradient>
       </defs>
-      <polygon points={area} fill="url(#sg)" />
-      <polyline points={pts} fill="none" stroke="#6366f1" strokeWidth={1.5} strokeLinejoin="round" />
+      <polygon points={`0,${h} ${pts} ${w},${h}`} fill="url(#sg2)" />
+      <polyline points={pts} fill="none" stroke="#818cf8" strokeWidth={1.5} strokeLinejoin="round" />
     </svg>
   )
 }
 
-function agentColor(status?: string): string {
-  if (status === 'working' || status === 'running') return '#facc15'
-  if (status === 'error' || status === 'failed') return '#f87171'
-  return '#4ade80'
+const glass: React.CSSProperties = {
+  background: 'rgba(15,23,42,0.6)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  borderRadius: 12,
+}
+
+const label: React.CSSProperties = {
+  fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+  textTransform: 'uppercase', color: '#475569', marginBottom: 10,
 }
 
 export default function StatsPanel() {
-  const stats = useStore((s: any) => s.stats) ?? {
-    pending: 0, running: 0, suspended: 0, completed: 0, failed: 0,
-  }
-  const wsConnected = useStore((s: any) => s.wsConnected) ?? false
-  const storeAgents: AgentNode[] = useStore((s: any) => s.agents) ?? []
+  const stats  = useStore((s: any) => s.stats) ?? { pending:0, running:0, suspended:0, completed:0, failed:0 }
+  const ws     = useStore((s: any) => s.wsConnected) ?? false
+  const agents = (useStore((s: any) => s.agents) ?? []) as { id?: string; name?: string; status?: string }[]
+  const list   = agents.length > 0 ? agents : FALLBACK_AGENTS.map(n => ({ id: n, name: n, status: 'idle' }))
 
-  const agents = storeAgents.length > 0
-    ? storeAgents
-    : FALLBACK_AGENTS.map(name => ({ id: name, name, status: 'idle' }))
-
-  const [sparkData, setSparkData] = useState<{ v: number }[]>(() =>
-    Array.from({ length: 20 }, () => ({ v: 0 }))
-  )
-  const prevCompleted = useRef(stats.completed)
-
+  const [spark, setSpark] = useState(() => Array.from({ length: 20 }, () => ({ v: 0 })))
+  const prev = useRef(0)
   useEffect(() => {
-    if (stats.completed !== prevCompleted.current) {
-      prevCompleted.current = stats.completed
-      setSparkData(prev => {
-        const next = [...prev.slice(-19), { v: stats.completed }]
-        return next
-      })
+    if (stats.completed !== prev.current) {
+      prev.current = stats.completed
+      setSpark(p => [...p.slice(-19), { v: stats.completed }])
     }
   }, [stats.completed])
 
-  const panelStyle: React.CSSProperties = {
-    background: '#0f172a',
-    width: '220px',
-    minWidth: '220px',
-    height: '500px',
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-    padding: '16px',
-    boxSizing: 'border-box',
-    borderRadius: '12px',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    scrollbarWidth: 'thin',
-    scrollbarColor: '#1e293b #0f172a',
-  }
-
-  const sectionTitleStyle: React.CSSProperties = {
-    fontSize: '10px',
-    fontWeight: 700,
-    letterSpacing: '0.12em',
-    textTransform: 'uppercase',
-    color: '#475569',
-    marginBottom: '8px',
-  }
-
-  const sectionStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-  }
-
   return (
-    <div style={panelStyle}>
-      {/* 1. Connection Status */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Connection</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ position: 'relative', width: '14px', height: '14px' }}>
-            {wsConnected && (
-              <motion.div
-                animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  borderRadius: '50%',
-                  background: '#4ade80',
-                }}
-              />
-            )}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                borderRadius: '50%',
-                background: wsConnected ? '#4ade80' : '#f87171',
-              }}
+    <div style={{
+      width: 200, display: 'flex', flexDirection: 'column', gap: 8,
+      fontFamily: "'JetBrains Mono','Courier New',monospace",
+    }}>
+
+      {/* WS status */}
+      <div style={{ ...glass, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ position: 'relative', width: 10, height: 10, flexShrink: 0 }}>
+          {ws && (
+            <motion.div
+              animate={{ scale: [1, 2.2, 1], opacity: [0.5, 0, 0.5] }}
+              transition={{ duration: 1.8, repeat: Infinity }}
+              style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#22c55e' }}
             />
-          </div>
-          <span style={{
-            fontSize: '13px',
-            fontWeight: 600,
-            color: wsConnected ? '#4ade80' : '#f87171',
-          }}>
-            {wsConnected ? 'Connected' : 'Disconnected'}
-          </span>
+          )}
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: ws ? '#22c55e' : '#ef4444' }} />
         </div>
+        <span style={{ fontSize: 11, fontWeight: 600, color: ws ? '#22c55e' : '#ef4444' }}>
+          {ws ? 'Connected' : 'Offline'}
+        </span>
       </div>
 
-      {/* Divider */}
-      <div style={{ height: '1px', background: '#1e293b' }} />
-
-      {/* 2. Task Counters */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Task Counters</div>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '6px',
-        }}>
-          {STAT_CARDS.map(card => (
-            <div
-              key={card.key}
-              style={{
-                background: card.bg,
-                border: `1px solid ${card.color}22`,
-                borderRadius: '8px',
-                padding: '8px 10px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '11px', color: card.color }}>{card.icon}</span>
-                <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
-                  {card.label}
-                </span>
-              </div>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: card.color, lineHeight: 1.1 }}>
-                <AnimatedNumber value={(stats as any)[card.key] ?? 0} />
+      {/* Task counters */}
+      <div style={{ ...glass, padding: '12px 14px' }}>
+        <div style={label}>Tasks</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {STATS.map(c => (
+            <div key={c.key} style={{
+              background: c.bg, border: `1px solid ${c.color}22`,
+              borderRadius: 8, padding: '8px 10px',
+            }}>
+              <div style={{ fontSize: 9, color: c.color, marginBottom: 2 }}>{c.icon} {c.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: c.color }}>
+                <AnimatedNumber value={(stats as any)[c.key] ?? 0} />
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Divider */}
-      <div style={{ height: '1px', background: '#1e293b' }} />
-
-      {/* 3. Agent Status Grid */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Agents</div>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px',
-        }}>
-          {agents.map((agent, i) => {
-            const name = agent.name ?? agent.id ?? FALLBACK_AGENTS[i] ?? `agent-${i}`
-            const color = agentColor(agent.status)
+      {/* Agents */}
+      <div style={{ ...glass, padding: '12px 14px' }}>
+        <div style={label}>Agents</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {list.map((a, i) => {
+            const name = a.name ?? a.id ?? FALLBACK_AGENTS[i]
+            const col = agentColor(a.status)
             return (
-              <div
-                key={agent.id ?? name}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
+              <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <motion.div
-                  animate={agent.status === 'working' || agent.status === 'running'
-                    ? { scale: [1, 1.25, 1] }
-                    : { scale: 1 }
-                  }
-                  transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: color,
-                    flexShrink: 0,
-                  }}
+                  animate={a.status === 'working' ? { scale: [1, 1.4, 1] } : { scale: 1 }}
+                  transition={{ duration: 1.1, repeat: Infinity }}
+                  style={{ width: 6, height: 6, borderRadius: '50%', background: col, flexShrink: 0, boxShadow: `0 0 6px ${col}` }}
                 />
-                <span style={{
-                  fontSize: '11px',
-                  color: '#94a3b8',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {name}
-                </span>
-                <span style={{
-                  marginLeft: 'auto',
-                  fontSize: '9px',
-                  color: color,
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}>
-                  {agent.status ?? 'idle'}
+                <span style={{ fontSize: 11, color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                <span style={{ fontSize: 9, color: col, fontWeight: 700, letterSpacing: '0.08em' }}>
+                  {(a.status ?? 'idle').toUpperCase()}
                 </span>
               </div>
             )
@@ -261,44 +144,25 @@ export default function StatsPanel() {
         </div>
       </div>
 
-      {/* Divider */}
-      <div style={{ height: '1px', background: '#1e293b' }} />
-
-      {/* 4. Provider Chain */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Provider Chain</div>
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '4px',
-        }}>
-          {PROVIDERS.map((provider, i) => (
-            <div
-              key={provider}
-              style={{
-                padding: '2px 8px',
-                borderRadius: '9999px',
-                fontSize: '10px',
-                fontWeight: 600,
-                background: i === 0 ? '#4338ca' : '#1e293b',
-                color: i === 0 ? '#e0e7ff' : '#64748b',
-                border: `1px solid ${i === 0 ? '#6366f1' : '#334155'}`,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {provider}
-            </div>
+      {/* Providers */}
+      <div style={{ ...glass, padding: '12px 14px' }}>
+        <div style={label}>Provider chain</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {PROVIDERS.map((p, i) => (
+            <span key={p} style={{
+              fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 9999,
+              background: i === 0 ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)',
+              color: i === 0 ? '#a5b4fc' : '#475569',
+              border: `1px solid ${i === 0 ? '#6366f155' : '#1e293b'}`,
+            }}>{p}</span>
           ))}
         </div>
       </div>
 
-      {/* Divider */}
-      <div style={{ height: '1px', background: '#1e293b' }} />
-
-      {/* 5. Throughput Sparkline (pure SVG) */}
-      <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>Throughput</div>
-        <SvgSparkline data={sparkData.map(d => d.v)} />
+      {/* Sparkline */}
+      <div style={{ ...glass, padding: '12px 14px' }}>
+        <div style={label}>Throughput</div>
+        <SvgSparkline data={spark.map(d => d.v)} />
       </div>
     </div>
   )

@@ -3,8 +3,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import type { Task, TaskStatus } from '../store/useStore'
 
-// --- helpers ---
-
 function relativeTime(ms: number): string {
   if (!ms) return '—'
   const diff = Math.floor((Date.now() - ms) / 1000)
@@ -17,123 +15,98 @@ function relativeTime(ms: number): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
-// --- status config ---
-
 const STATUS_COLOR: Record<TaskStatus, string> = {
-  pending: '#94a3b8',
-  running: '#facc15',
+  pending:   '#64748b',
+  running:   '#facc15',
   suspended: '#fb923c',
   completed: '#4ade80',
-  failed: '#f87171',
+  failed:    '#f87171',
 }
 
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  pending: 'pending',
-  running: 'running',
-  suspended: 'suspended',
-  completed: 'done',
-  failed: 'failed',
+const STATUS_ICON: Record<TaskStatus, string> = {
+  pending:   '○',
+  running:   '▶',
+  suspended: '⏸',
+  completed: '✓',
+  failed:    '✗',
 }
 
-// --- sub-components ---
-
-function PulsingDot() {
-  return (
-    <motion.span
-      animate={{ opacity: [1, 0.2, 1] }}
-      transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-      style={{
-        display: 'inline-block',
-        width: 6,
-        height: 6,
-        borderRadius: '50%',
-        background: '#facc15',
-        marginRight: 5,
-        verticalAlign: 'middle',
-        position: 'relative',
-        top: -1,
-      }}
-    />
-  )
+type Filter = 'all' | 'running' | 'done' | 'failed'
+const FILTER_MATCH: Record<Filter, TaskStatus[]> = {
+  all:     ['pending', 'running', 'suspended', 'completed', 'failed'],
+  running: ['running', 'pending', 'suspended'],
+  done:    ['completed'],
+  failed:  ['failed'],
 }
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'all',     label: 'all' },
+  { key: 'running', label: 'active' },
+  { key: 'done',    label: 'done' },
+  { key: 'failed',  label: 'failed' },
+]
 
-function StatusBadge({ status }: { status: TaskStatus }) {
-  const color = STATUS_COLOR[status]
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '1px 8px',
-        borderRadius: 9999,
-        fontSize: 11,
-        fontWeight: 600,
-        letterSpacing: '0.04em',
-        background: color + '22',
-        color,
-        border: `1px solid ${color}55`,
-        whiteSpace: 'nowrap',
-        flexShrink: 0,
-      }}
-    >
-      {status === 'running' && <PulsingDot />}
-      {STATUS_LABEL[status]}
-    </span>
-  )
+const AGENTS = ['auto', 'opencode', 'agy', 'grok', 'cline', 'vibe', 'codex', 'kilo']
+
+const mono: React.CSSProperties = {
+  fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace",
 }
 
 function TaskRow({ task }: { task: Task }) {
   const [expanded, setExpanded] = useState(false)
+  const color = STATUS_COLOR[task.status]
+  const icon = STATUS_ICON[task.status]
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-      transition={{ duration: 0.22, ease: 'easeOut' }}
-      onClick={() => setExpanded((v) => !v)}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      onClick={() => setExpanded(v => !v)}
       style={{
-        background: '#0f172a',
-        border: '1px solid #1e293b',
-        borderRadius: 6,
-        padding: '8px 12px',
-        marginBottom: 6,
+        borderLeft: `2px solid ${color}55`,
+        padding: '7px 12px',
+        marginBottom: 3,
         cursor: 'pointer',
-        userSelect: 'none',
+        borderRadius: '0 6px 6px 0',
+        background: expanded ? 'rgba(255,255,255,0.03)' : 'transparent',
+        transition: 'background 0.12s',
       }}
     >
       {/* collapsed row */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          minWidth: 0,
-        }}
-      >
-        <StatusBadge status={task.status} />
-
-        <span
-          style={{
-            flex: 1,
-            fontSize: 12,
-            color: '#e2e8f0',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          title={task.prompt}
-        >
-          {task.prompt || <span style={{ color: '#475569' }}>(no prompt)</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <span style={{ ...mono, fontSize: 12, color, flexShrink: 0, fontWeight: 700 }}>
+          {task.status === 'running' ? (
+            <motion.span
+              animate={{ opacity: [1, 0.2, 1] }}
+              transition={{ duration: 0.9, repeat: Infinity }}
+              style={{ display: 'inline-block' }}
+            >{icon}</motion.span>
+          ) : icon}
         </span>
 
-        <span style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>
+        <span style={{
+          ...mono, flex: 1, fontSize: 12, color: '#cbd5e1',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }} title={task.prompt}>
+          {task.prompt || <span style={{ color: '#334155' }}>(no prompt)</span>}
+        </span>
+
+        <span style={{ ...mono, fontSize: 10, color: '#475569', flexShrink: 0 }}>
           {task.agentId || 'auto'}
         </span>
 
-        <span style={{ fontSize: 11, color: '#334155', whiteSpace: 'nowrap' }}>
+        <span style={{ ...mono, fontSize: 10, color: '#334155', flexShrink: 0 }}>
           {relativeTime(task.createdAt)}
+        </span>
+
+        <span style={{
+          ...mono, fontSize: 9, fontWeight: 700, color,
+          background: color + '15', border: `1px solid ${color}30`,
+          borderRadius: 4, padding: '1px 6px', flexShrink: 0,
+        }}>
+          {task.status}
         </span>
       </div>
 
@@ -145,26 +118,39 @@ function TaskRow({ task }: { task: Task }) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: 0.16 }}
             style={{ overflow: 'hidden' }}
           >
-            <div
-              style={{
-                marginTop: 10,
-                paddingTop: 10,
-                borderTop: '1px solid #1e293b',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
-              <DetailRow label="prompt" value={task.prompt} />
-              {task.result && <DetailRow label="result" value={task.result} color="#4ade80" />}
-              {task.error && <DetailRow label="error" value={task.error} color="#f87171" />}
+            <div style={{
+              marginTop: 10, paddingTop: 10,
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              {task.result && (
+                <div style={{ ...mono, fontSize: 11 }}>
+                  <span style={{ color: '#4ade80' }}>result</span>
+                  <span style={{ color: '#334155', margin: '0 6px' }}>›</span>
+                  <span style={{ color: '#94a3b8', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{task.result}</span>
+                </div>
+              )}
+              {task.error && (
+                <div style={{ ...mono, fontSize: 11 }}>
+                  <span style={{ color: '#f87171' }}>error</span>
+                  <span style={{ color: '#334155', margin: '0 6px' }}>›</span>
+                  <span style={{ color: '#f87171', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{task.error}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 16, marginTop: 2 }}>
-                <Meta label="id" value={task.id} />
-                <Meta label="type" value={task.type} />
-                <Meta label="priority" value={String(task.priority)} />
+                {[
+                  ['id', task.id],
+                  ['type', task.type],
+                  ['priority', String(task.priority)],
+                ].map(([k, v]) => (
+                  <span key={k} style={{ ...mono, fontSize: 10 }}>
+                    <span style={{ color: '#334155' }}>{k} </span>
+                    <span style={{ color: '#475569' }}>{v}</span>
+                  </span>
+                ))}
               </div>
             </div>
           </motion.div>
@@ -173,62 +159,6 @@ function TaskRow({ task }: { task: Task }) {
     </motion.div>
   )
 }
-
-function DetailRow({
-  label,
-  value,
-  color = '#cbd5e1',
-}: {
-  label: string
-  value: string
-  color?: string
-}) {
-  return (
-    <div style={{ fontSize: 12 }}>
-      <span style={{ color: '#475569', marginRight: 6 }}>{label}:</span>
-      <span
-        style={{
-          color,
-          wordBreak: 'break-word',
-          whiteSpace: 'pre-wrap',
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <span style={{ fontSize: 11, color: '#334155' }}>
-      <span style={{ color: '#1e293b', marginRight: 3 }}>{label}</span>
-      <span style={{ color: '#475569' }}>{value}</span>
-    </span>
-  )
-}
-
-// --- filter types ---
-
-type Filter = 'all' | 'running' | 'done' | 'failed'
-
-const FILTER_MATCH: Record<Filter, TaskStatus[]> = {
-  all: ['pending', 'running', 'suspended', 'completed', 'failed'],
-  running: ['running', 'pending', 'suspended'],
-  done: ['completed'],
-  failed: ['failed'],
-}
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'running', label: 'Running' },
-  { key: 'done', label: 'Done' },
-  { key: 'failed', label: 'Failed' },
-]
-
-// --- submit form ---
-
-const AGENTS = ['auto', 'opencode', 'agy', 'grok', 'cline', 'vibe', 'codex', 'kilo']
 
 function SubmitBar({ connected }: { connected: boolean }) {
   const [prompt, setPrompt] = useState('')
@@ -249,7 +179,7 @@ function SubmitBar({ connected }: { connected: boolean }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setPrompt('')
     } catch (err) {
-      console.log('[LiveFeed] submit task', payload, err)
+      console.error('[LiveFeed] submit failed', err)
     } finally {
       setSubmitting(false)
     }
@@ -260,208 +190,135 @@ function SubmitBar({ connected }: { connected: boolean }) {
   }
 
   const inputBase: React.CSSProperties = {
-    background: '#0f172a',
-    border: '1px solid #1e293b',
-    borderRadius: 5,
+    ...mono,
+    background: 'rgba(2,8,23,0.6)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 6,
     color: '#e2e8f0',
     fontSize: 12,
-    fontFamily: "'JetBrains Mono', 'Courier New', monospace",
     outline: 'none',
-    padding: '6px 10px',
+    padding: '7px 11px',
+    transition: 'border-color 0.12s',
   }
 
   return (
-    <div
-      style={{
-        borderTop: '1px solid #1e293b',
-        padding: '12px 14px',
-        background: '#080f1a',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-      }}
-    >
+    <div style={{
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+      padding: '12px 16px',
+      background: 'rgba(2,8,23,0.4)',
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
       {!connected && (
-        <div
-          style={{
-            fontSize: 11,
-            color: '#fb923c',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginBottom: 2,
-          }}
-        >
+        <div style={{ ...mono, fontSize: 10, color: '#fb923c', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>⚠</span>
-          <span>Not connected — reconnect WebSocket to submit tasks</span>
+          <span>WebSocket offline — reconnecting...</span>
         </div>
       )}
 
-      {/* prompt row */}
-      <input
-        type="text"
-        placeholder="Describe a task for the agents..."
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={handleKey}
-        disabled={!connected}
-        style={{
-          ...inputBase,
-          width: '100%',
-          boxSizing: 'border-box',
-          opacity: connected ? 1 : 0.5,
-        }}
-      />
+      {/* prompt input with prefix */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ ...mono, fontSize: 13, color: '#6366f1', flexShrink: 0, userSelect: 'none' }}>›</span>
+        <input
+          type="text"
+          placeholder="Describe a task for the agents..."
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={handleKey}
+          disabled={!connected}
+          style={{ ...inputBase, flex: 1, opacity: connected ? 1 : 0.5 }}
+        />
+      </div>
 
       {/* controls row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* agent select */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 21 }}>
         <select
           value={agent}
-          onChange={(e) => setAgent(e.target.value)}
+          onChange={e => setAgent(e.target.value)}
           disabled={!connected}
-          style={{
-            ...inputBase,
-            cursor: 'pointer',
-            appearance: 'none' as const,
-            WebkitAppearance: 'none' as const,
-            paddingRight: 24,
-            opacity: connected ? 1 : 0.5,
-          }}
+          style={{ ...inputBase, cursor: 'pointer', paddingRight: 20, opacity: connected ? 1 : 0.5 }}
         >
-          {AGENTS.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
+          {AGENTS.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
 
-        {/* priority slider */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            flex: 1,
-          }}
-        >
-          <span style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>
-            p:{priority}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+          <span style={{ ...mono, fontSize: 10, color: '#475569', whiteSpace: 'nowrap' }}>p:{priority}</span>
           <input
-            type="range"
-            min={1}
-            max={10}
-            value={priority}
-            onChange={(e) => setPriority(Number(e.target.value))}
+            type="range" min={1} max={10} value={priority}
+            onChange={e => setPriority(Number(e.target.value))}
             disabled={!connected}
-            style={{
-              flex: 1,
-              accentColor: '#6366f1',
-              cursor: connected ? 'pointer' : 'not-allowed',
-              opacity: connected ? 1 : 0.5,
-            }}
+            style={{ flex: 1, accentColor: '#6366f1', cursor: connected ? 'pointer' : 'not-allowed', opacity: connected ? 1 : 0.5 }}
           />
         </div>
 
-        {/* submit */}
         <button
           onClick={handleSubmit}
           disabled={!connected || !prompt.trim() || submitting}
           style={{
-            background: connected && prompt.trim() ? '#6366f1' : '#1e293b',
-            color: connected && prompt.trim() ? '#fff' : '#475569',
-            border: 'none',
-            borderRadius: 5,
-            padding: '6px 16px',
-            fontSize: 12,
-            fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-            fontWeight: 600,
+            ...mono,
+            background: connected && prompt.trim() ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
+            color: connected && prompt.trim() ? '#a5b4fc' : '#334155',
+            border: `1px solid ${connected && prompt.trim() ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)'}`,
+            borderRadius: 6, padding: '6px 16px', fontSize: 12, fontWeight: 700,
             cursor: connected && prompt.trim() ? 'pointer' : 'not-allowed',
-            transition: 'background 0.15s, color 0.15s',
-            whiteSpace: 'nowrap',
+            transition: 'all 0.12s', whiteSpace: 'nowrap',
           }}
         >
-          {submitting ? '...' : 'submit'}
+          {submitting ? '...' : 'run ↵'}
         </button>
       </div>
     </div>
   )
 }
 
-// --- main component ---
-
 export default function LiveFeed() {
-  const tasks = useStore((s) => s.tasks)
-  const wsConnected = useStore((s) => s.wsConnected)
+  const tasks = useStore(s => s.tasks)
+  const wsConnected = useStore(s => s.wsConnected)
   const [filter, setFilter] = useState<Filter>('all')
 
-  const visible = tasks.filter((t) => FILTER_MATCH[filter].includes(t.status))
+  const visible = tasks.filter(t => FILTER_MATCH[filter].includes(t.status))
+  const runningCount = tasks.filter(t => t.status === 'running').length
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: 500,
-        background: '#0f172a',
-        overflow: 'hidden',
-        fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-        color: '#e2e8f0',
-      }}
-    >
-      {/* header + filter bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 14px 8px',
-          borderBottom: '1px solid #1e293b',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', letterSpacing: '0.05em' }}>
-            live feed
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: 500,
+      background: 'transparent', overflow: 'hidden',
+    }}>
+      {/* header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 16px 9px',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1', boxShadow: '0 0 8px #6366f1' }} />
+          <span style={{ ...mono, fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: '#6366f1', textTransform: 'uppercase' as const }}>
+            Task Stream
           </span>
-          <motion.span
-            animate={{ opacity: wsConnected ? [1, 0.4, 1] : 1 }}
-            transition={{ duration: 2, repeat: Infinity }}
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: wsConnected ? '#4ade80' : '#f87171',
-              display: 'inline-block',
-            }}
-          />
-          <span style={{ fontSize: 10, color: wsConnected ? '#4ade80' : '#f87171' }}>
-            {wsConnected ? 'ws:ok' : 'ws:off'}
-          </span>
+          {runningCount > 0 && (
+            <motion.span
+              animate={{ opacity: [1, 0.4, 1] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+              style={{ ...mono, fontSize: 10, color: '#facc15', background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.25)', borderRadius: 9999, padding: '1px 8px' }}
+            >
+              {runningCount} running
+            </motion.span>
+          )}
         </div>
 
-        {/* filter buttons */}
-        <div style={{ display: 'flex', gap: 4 }}>
+        {/* filter tabs */}
+        <div style={{ display: 'flex', gap: 2 }}>
           {FILTERS.map(({ key, label }) => {
             const active = filter === key
             return (
-              <button
-                key={key}
-                onClick={() => setFilter(key)}
-                style={{
-                  background: active ? '#1e3a5f' : 'transparent',
-                  color: active ? '#60a5fa' : '#475569',
-                  border: active ? '1px solid #2563eb55' : '1px solid transparent',
-                  borderRadius: 4,
-                  padding: '2px 8px',
-                  fontSize: 11,
-                  fontFamily: 'inherit',
-                  cursor: 'pointer',
-                  fontWeight: active ? 600 : 400,
-                  transition: 'all 0.12s',
-                }}
-              >
+              <button key={key} onClick={() => setFilter(key)} style={{
+                ...mono,
+                background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
+                color: active ? '#a5b4fc' : '#334155',
+                border: active ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent',
+                borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: active ? 700 : 400,
+                cursor: 'pointer', transition: 'all 0.1s',
+              }}>
                 {label}
               </button>
             )
@@ -469,36 +326,24 @@ export default function LiveFeed() {
         </div>
       </div>
 
-      {/* scrollable task list */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '10px 10px 4px',
-          maxHeight: 380,
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#1e293b #0f172a',
-        }}
-      >
+      {/* task list */}
+      <div style={{
+        flex: 1, overflowY: 'auto', padding: '8px 6px 4px',
+        scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent',
+      }}>
         {visible.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: '#1e293b',
-              fontSize: 12,
-              letterSpacing: '0.06em',
-            }}
-          >
-            no tasks
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            height: '100%', gap: 8,
+          }}>
+            <div style={{ fontSize: 28, opacity: 0.2 }}>⟳</div>
+            <span style={{ ...mono, fontSize: 11, color: '#1e293b', letterSpacing: '0.08em' }}>
+              {filter === 'all' ? 'no tasks yet' : `no ${filter} tasks`}
+            </span>
           </div>
         ) : (
           <AnimatePresence initial={false}>
-            {visible.map((task) => (
-              <TaskRow key={task.id} task={task} />
-            ))}
+            {visible.map(task => <TaskRow key={task.id} task={task} />)}
           </AnimatePresence>
         )}
       </div>
