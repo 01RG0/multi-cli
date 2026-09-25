@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,13 +15,16 @@ import (
 	"github.com/01rg0/orchestrator/internal/queue"
 )
 
+// Server handles HTTP and WebSocket traffic for the orchestrator.
 type Server struct {
-	router     *provider.Router
-	cfg        *config.Config
-	httpServer *http.Server
-	Hub        *hub.Hub
-	q          *queue.Queue  // optional; nil when workers are disabled
-	graph      *memory.Graph
+	router      *provider.Router
+	cfg         *config.Config
+	httpServer  *http.Server
+	Hub         *hub.Hub
+	q           *queue.Queue // optional; nil when workers are disabled
+	graph       *memory.Graph
+	db          *sql.DB
+	providerMap map[string]provider.Provider
 }
 
 // New creates a Server. g may be nil when memory is not needed (e.g. in tests).
@@ -33,6 +37,8 @@ func New(router *provider.Router, cfg *config.Config, g *memory.Graph) *Server {
 // SetQueue attaches a live queue to the server, enabling /api/tasks and
 // /api/tasks/enqueue, and wiring an init-snapshot on every WS connect.
 // Must be called before Start().
+// SetQueue attaches a live queue, enabling /api/tasks endpoints and wiring an
+// init-snapshot on every WS connect. Must be called before Start().
 func (s *Server) SetQueue(q *queue.Queue) {
 	s.q = q
 	s.Hub.OnConnect = func() []byte {
@@ -43,13 +49,61 @@ func (s *Server) SetQueue(q *queue.Queue) {
 		b, _ := json.Marshal(map[string]any{
 			"type": "stats",
 			"stats": map[string]any{
-				"runningCount":   stats[string(queue.StatusRunning)],
-				"pendingCount":   stats[string(queue.StatusPending)],
-				"tasksToday":     stats[string(queue.StatusCompleted)] + stats[string(queue.StatusFailed)],
+				"runningCount": stats[string(queue.StatusRunning)],
+				"pendingCount": stats[string(queue.StatusPending)],
+				"tasksToday":   stats[string(queue.StatusCompleted)] + stats[string(queue.StatusFailed)],
 			},
 		})
 		return b
 	}
+}
+
+// RegisterUltronRoutes stores the database connection and enables the full
+// Ultron API surface. Must be called before Start().
+func (s *Server) RegisterUltronRoutes(db *sql.DB, graph *memory.Graph, q *queue.Queue) {
+	s.db = db
+	if graph != nil {
+		s.graph = graph
+	}
+	if q != nil {
+		s.q = q
+	}
+}
+
+// SetProviderMap stores the provider map for per-agent routing.
+func (s *Server) SetProviderMap(m map[string]provider.Provider) {
+	s.providerMap = m
+}
+
+// buildAgentRouter returns a per-agent router if AgentProviders is configured,
+// falling back to the global router.
+func (s *Server) buildAgentRouter(agentID string) *provider.Router {
+	if s.providerMap == nil || s.cfg.AgentProviders == nil {
+		return s.router
+	}
+	chain, ok := s.cfg.AgentProviders[agentID]
+	if !ok || len(chain) == 0 {
+		// Try "default" key
+		chain = s.cfg.AgentProviders["default"]
+	}
+	if len(chain) == 0 {
+		return s.router
+	}
+	var providers []provider.Provider
+	for _, name := range chain {
+		if p, ok := s.providerMap[name]; ok {
+			providers = append(providers, p)
+		}
+	}
+	if len(providers) == 0 {
+		return s.router
+	}
+	primary := providers[0]
+	var fallbacks []provider.Provider
+	if len(providers) > 1 {
+		fallbacks = providers[1:]
+	}
+	return provider.NewRouter(primary, fallbacks, s.cfg.MaxRetries, s.cfg.CooldownSeconds)
 }
 
 // ServeMessages is the exported handler for testing.
@@ -65,13 +119,46 @@ func (s *Server) ServeHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/messages", s.handleMessages)
-	mux.HandleFunc("/messages", s.handleMessages) // SDK compat: some versions omit /v1 prefix
+	mux.HandleFunc("/messages", s.handleMessages) // SDK compat
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/ws", s.Hub.ServeWS)
+
+	// Per-agent provider routing: /agent/{agentId}/v1/messages
+	mux.HandleFunc("/agent/", s.handleAgentProxy)
 
 	if s.q != nil {
 		mux.HandleFunc("/api/tasks", s.handleAPITasks)
 		mux.HandleFunc("/api/tasks/enqueue", s.handleAPIEnqueue)
+	}
+
+	// Ultron API routes — enabled when db is wired via RegisterUltronRoutes.
+	if s.db != nil {
+		// Memory
+		mux.HandleFunc("/api/memory/search", s.handleMemorySearch)
+		mux.HandleFunc("/api/memory/upsert", s.handleMemoryUpsert)
+		mux.HandleFunc("/api/memory/core", s.handleMemoryCore)
+		mux.HandleFunc("/api/memory/episodes", s.handleMemoryEpisodes)
+
+		// Task control (additional routes beyond /api/tasks)
+		mux.HandleFunc("/api/tasks/{id}/cancel", s.handleTaskCancel)
+		mux.HandleFunc("/api/tasks/{id}/retry", s.handleTaskRetry)
+
+		// Agent status and provider chains
+		mux.HandleFunc("/api/agents/status", s.handleAgentStatus)
+		mux.HandleFunc("/api/agents/fallbacks", s.handleAgentFallbacks)
+		mux.HandleFunc("/api/agents/provider-chains", s.handleAgentProviderChains)
+
+		// Cron scheduling
+		mux.HandleFunc("/api/cron/schedule", s.handleCronSchedule)
+		mux.HandleFunc("/api/cron/jobs", s.handleCronJobs)
+		mux.HandleFunc("/api/cron/jobs/{id}", s.handleCronJobByID)
+
+		// Routing rules
+		mux.HandleFunc("/api/routing/rules", s.handleRoutingRules)
+		mux.HandleFunc("/api/routing/rules/{id}", s.handleRoutingRuleByID)
+
+		// Feedback
+		mux.HandleFunc("/api/feedback", s.handleFeedback)
 	}
 
 	addr := fmt.Sprintf(":%d", s.cfg.ProxyPort)
@@ -163,4 +250,22 @@ func (s *Server) handleAPIEnqueue(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"id": t.ID})
+}
+
+// corsJSON sets CORS + Content-Type headers shared by all Ultron handlers.
+func corsJSON(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+}
+
+// handleCORSPreflight returns 204 for OPTIONS requests.
+func handleCORSPreflight(w http.ResponseWriter, r *http.Request, methods string) bool {
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", methods+", OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.WriteHeader(http.StatusNoContent)
+		return true
+	}
+	return false
 }

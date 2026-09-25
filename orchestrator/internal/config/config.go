@@ -32,7 +32,7 @@ type ShellToolConfig struct {
 }
 
 type WebToolConfig struct {
-	TimeoutSeconds  int `yaml:"timeout_seconds"`
+	TimeoutSeconds   int `yaml:"timeout_seconds"`
 	MaxResponseBytes int `yaml:"max_response_bytes"`
 }
 
@@ -60,6 +60,10 @@ type Config struct {
 	EpisodeCleanupIntervalSecs int `yaml:"episode_cleanup_interval_secs"` // default 3600
 	EpisodeMaxRows             int `yaml:"episode_max_rows"`               // default 10000
 	EpisodeMaxAgeDays          int `yaml:"episode_max_age_days"`           // default 90
+
+	// AgentProviders maps agent names to ordered provider preference lists.
+	// Empty or missing entry means use the global FallbackChain.
+	AgentProviders map[string][]string `yaml:"agent_providers"`
 }
 
 var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)
@@ -105,7 +109,6 @@ func Load(path string) (*Config, error) {
 	if len(cfg.Tools.Shell.AllowedCommands) == 0 {
 		cfg.Tools.Shell.AllowedCommands = []string{"git", "go", "npm", "python", "node", "curl"}
 	}
-	// Memory defaults — MemoryEnabled stays false unless explicitly set in config.
 	if cfg.RetrievalK == 0 {
 		cfg.RetrievalK = 5
 	}

@@ -149,8 +149,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(out)
 }
 
-func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq provider.ChatRequest, model string) {
-	ch, err := s.router.Stream(r.Context(), chatReq)
+func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq provider.ChatRequest, model string, rtr ...*provider.Router) {
+	var router *provider.Router
+	if len(rtr) > 0 && rtr[0] != nil {
+		router = rtr[0]
+	} else {
+		router = s.router
+	}
+	ch, err := router.Stream(r.Context(), chatReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -326,4 +332,118 @@ func isAPIError(err error, target **provider.APIError) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request) {
+	// Path: /agent/{agentId}/v1/messages  or  /agent/{agentId}/messages
+	path := strings.TrimPrefix(r.URL.Path, "/agent/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+	agentID := parts[0]
+	// Must end with "messages"
+	if parts[len(parts)-1] != "messages" {
+		http.NotFound(w, r)
+		return
+	}
+	agentRouter := s.buildAgentRouter(agentID)
+	s.proxyWithRouter(w, r, agentRouter, agentID)
+}
+
+// proxyWithRouter is the shared core used by handleMessages and handleAgentProxy.
+
+func (s *Server) proxyWithRouter(w http.ResponseWriter, r *http.Request, rtr *provider.Router, agentID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req proxyRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "parse body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if s.cfg.ProxyLog {
+		log.Printf("proxy: agent=%s model=%s stream=%v messages=%d", agentID, req.Model, req.Stream, len(req.Messages))
+	}
+
+	chatReq := toChatRequest(req)
+
+	// Extract last user message text for memory retrieval and episode logging.
+	var lastUserText string
+	for i := len(chatReq.Messages) - 1; i >= 0; i-- {
+		if chatReq.Messages[i].Role == "user" {
+			lastUserText = chatReq.Messages[i].Content
+			break
+		}
+	}
+
+	// Inject memory context into system prompt when memory is enabled.
+	if s.cfg.MemoryEnabled && s.graph != nil && lastUserText != "" {
+		memBlock := s.buildMemoryBlock(r.Context(), lastUserText)
+		if memBlock != "" {
+			if len(chatReq.Messages) > 0 && chatReq.Messages[0].Role == "system" {
+				chatReq.Messages[0].Content += "\n\n" + memBlock
+			} else {
+				chatReq.Messages = append([]provider.Message{{Role: "system", Content: memBlock}}, chatReq.Messages...)
+			}
+		}
+	}
+
+	if req.Stream {
+		s.handleStream(w, r, chatReq, req.Model, rtr)
+		return
+	}
+
+	resp, err := rtr.Complete(r.Context(), chatReq)
+	if err != nil {
+		code := http.StatusBadGateway
+		var apiErr *provider.APIError
+		if isAPIError(err, &apiErr) && apiErr.StatusCode == 429 {
+			code = http.StatusTooManyRequests
+		}
+		http.Error(w, err.Error(), code)
+		return
+	}
+
+	// Async episode write — must not block the HTTP response.
+	if s.graph != nil {
+		assistantText := resp.Content
+		go func() {
+			epCtx := context.Background()
+			compact, _ := json.Marshal(map[string]string{"user": lastUserText, "assistant": assistantText})
+			if _, err := s.graph.AppendEpisode(epCtx, memory.Episode{
+				AgentID: agentID,
+				Kind:    "message",
+				Content: string(compact),
+			}); err != nil {
+				log.Printf("memory: episode write: %v", err)
+			}
+		}()
+	}
+
+	out := proxyResponse{
+		ID:         fmt.Sprintf("msg_%d", time.Now().UnixNano()),
+		Type:       "message",
+		Role:       "assistant",
+		Model:      req.Model,
+		StopReason: mapStopReason(resp.FinishReason),
+		Content:    []contentBlock{{Type: "text", Text: resp.Content}},
+		Usage: proxyUsage{
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }

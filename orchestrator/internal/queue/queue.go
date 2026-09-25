@@ -16,23 +16,27 @@ const (
 	StatusSuspended Status = "suspended"
 	StatusCompleted Status = "completed"
 	StatusFailed    Status = "failed"
+	StatusCancelled Status = "cancelled"
+	StatusReplaced  Status = "replaced"
 )
 
 type Task struct {
-	ID          string
-	Type        string
-	Status      Status
-	Priority    int
-	AgentID     string
-	Prompt      string
-	Result      string
-	Error       string
-	CreatedAt   int64
-	StartedAt   int64
-	FinishedAt  int64
-	SuspendedAt int64
-	ResumeToken string
-	Metadata    string
+	ID            string
+	Type          string
+	Status        Status
+	Priority      int
+	AgentID       string
+	Prompt        string
+	Result        string
+	Error         string
+	CreatedAt     int64
+	StartedAt     int64
+	FinishedAt    int64
+	SuspendedAt   int64
+	ResumeToken   string
+	Metadata      string
+	OriginalAgent string
+	Attempt       int
 }
 
 type Queue struct {
@@ -54,10 +58,13 @@ func (q *Queue) Enqueue(ctx context.Context, t Task) error {
 	if t.CreatedAt == 0 {
 		t.CreatedAt = time.Now().UnixMilli()
 	}
+	if t.Attempt == 0 {
+		t.Attempt = 1
+	}
 	_, err := q.db.ExecContext(ctx,
-		`INSERT INTO tasks (id,type,status,priority,agent_id,prompt,created_at,metadata)
-		 VALUES (?,?,?,?,?,?,?,?)`,
-		t.ID, t.Type, StatusPending, t.Priority, t.AgentID, t.Prompt, t.CreatedAt, t.Metadata,
+		`INSERT INTO tasks (id,type,status,priority,agent_id,prompt,created_at,metadata,original_agent,attempt)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.Type, StatusPending, t.Priority, t.AgentID, t.Prompt, t.CreatedAt, t.Metadata, t.OriginalAgent, t.Attempt,
 	)
 	return err
 }
@@ -89,13 +96,21 @@ func (q *Queue) tryDequeue(ctx context.Context) (Task, error) {
 	defer tx.Rollback()
 
 	var t Task
+	var origAgent sql.NullString
+	var attempt sql.NullInt64
 	err = tx.QueryRowContext(ctx,
-		`SELECT id,type,status,priority,agent_id,prompt,created_at,metadata
+		`SELECT id,type,status,priority,agent_id,prompt,created_at,metadata,original_agent,attempt
 		 FROM tasks WHERE status=? ORDER BY priority DESC, created_at ASC LIMIT 1`,
 		StatusPending,
-	).Scan(&t.ID, &t.Type, &t.Status, &t.Priority, &t.AgentID, &t.Prompt, &t.CreatedAt, &t.Metadata)
+	).Scan(&t.ID, &t.Type, &t.Status, &t.Priority, &t.AgentID, &t.Prompt, &t.CreatedAt, &t.Metadata, &origAgent, &attempt)
 	if err != nil {
 		return Task{}, err
+	}
+	t.OriginalAgent = origAgent.String
+	if attempt.Valid {
+		t.Attempt = int(attempt.Int64)
+	} else {
+		t.Attempt = 1
 	}
 
 	now := time.Now().UnixMilli()
@@ -111,9 +126,53 @@ func (q *Queue) tryDequeue(ctx context.Context) (Task, error) {
 	return t, tx.Commit()
 }
 
+// GetByID fetches a task by its ID.
+func (q *Queue) GetByID(ctx context.Context, id string) (Task, error) {
+	var t Task
+	var origAgent sql.NullString
+	var attempt sql.NullInt64
+	err := q.db.QueryRowContext(ctx,
+		`SELECT id, type, status, priority, agent_id, prompt, created_at, metadata, original_agent, attempt
+		 FROM tasks WHERE id=?`, id,
+	).Scan(&t.ID, &t.Type, &t.Status, &t.Priority, &t.AgentID, &t.Prompt, &t.CreatedAt, &t.Metadata, &origAgent, &attempt)
+	if err != nil {
+		return Task{}, err
+	}
+	t.OriginalAgent = origAgent.String
+	if attempt.Valid {
+		t.Attempt = int(attempt.Int64)
+	} else {
+		t.Attempt = 1
+	}
+	return t, nil
+}
+
+// Cancel marks a pending task as cancelled. Returns (true, nil) if cancelled,
+// (false, nil) if the task was not in pending state.
+func (q *Queue) Cancel(ctx context.Context, id string) (bool, error) {
+	res, err := q.db.ExecContext(ctx,
+		`UPDATE tasks SET status=?, finished_at=? WHERE id=? AND status=?`,
+		StatusCancelled, time.Now().UnixMilli(), id, StatusPending,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// MarkReplaced marks a task as replaced by a fallback agent.
+func (q *Queue) MarkReplaced(ctx context.Context, id, by string) error {
+	_, err := q.db.ExecContext(ctx,
+		`UPDATE tasks SET status=?, error=?, finished_at=? WHERE id=?`,
+		StatusReplaced, "replaced by "+by, time.Now().UnixMilli(), id,
+	)
+	return err
+}
+
 func (q *Queue) Complete(id, result string) error {
 	_, err := q.db.Exec(
-		`UPDATE tasks SET status=?, result=?, finished_at=? WHERE id=?`,
+		`UPDATE tasks SET status=?, result=?, finished_at=? WHERE id=? AND status IN ('running','pending')`,
 		StatusCompleted, result, time.Now().UnixMilli(), id,
 	)
 	return err
@@ -121,7 +180,7 @@ func (q *Queue) Complete(id, result string) error {
 
 func (q *Queue) Fail(id, errMsg string) error {
 	_, err := q.db.Exec(
-		`UPDATE tasks SET status=?, error=?, finished_at=? WHERE id=?`,
+		`UPDATE tasks SET status=?, error=?, finished_at=? WHERE id=? AND status IN ('running','pending')`,
 		StatusFailed, errMsg, time.Now().UnixMilli(), id,
 	)
 	return err

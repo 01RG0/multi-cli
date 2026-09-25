@@ -15,9 +15,9 @@ var upgrader = websocket.Upgrader{
 
 // Hub manages WebSocket clients and broadcasts events.
 type Hub struct {
-	mu        sync.RWMutex
-	clients   map[*client]bool
-	send      chan []byte
+	mu      sync.RWMutex
+	clients map[*client]bool
+	send    chan []byte
 	// OnConnect, if non-nil, is called when a new client connects.
 	// The returned bytes (JSON) are sent only to that client as an init snapshot.
 	// Safe to set before any clients connect; reads are protected by the client

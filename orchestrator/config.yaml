@@ -25,13 +25,13 @@ providers:
 
   - name: apmix
     type: openai_compat
-    base_url: ${APMIX_BASE_URL}
+    base_url: https://api.apmix.ai/v1
     api_key: ${APMIX_API_KEY}
-    model: deepseek-v4.1-flash-free
+    model: deepseek-v4-flash-free
 
   - name: dahl
     type: openai_compat
-    base_url: ${DAHL_BASE_URL}
+    base_url: https://inference.dahl.global/v1
     api_key: ${DAHL_API_KEY}
     model: deepseek-ai/DeepSeek-V4-Flash-0731
 
@@ -54,8 +54,8 @@ providers:
     secret_key: ${AWS_SECRET_ACCESS_KEY}
     model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
 
-# Primary provider + fallback order (groq + bedrock confirmed working)
-fallback_chain: [groq, apmix, bedrock, dahl, tokenharbor, codecraft, aihubmix, ollama, anthropic]
+# Primary provider + fallback order
+fallback_chain: [groq, apmix, dahl, bedrock, tokenharbor, codecraft, aihubmix, ollama, anthropic]
 
 max_retries: 3
 cooldown_seconds: 60
@@ -74,6 +74,11 @@ concurrency: 4
 memory_enabled: false       # set to true to inject retrieved context into system prompt
 retrieval_k: 5              # max nodes to retrieve per query
 core_memory_max_bytes: 4096 # max size of the core memory scratchpad
+# Worker pool and memory enabled at startup
+enable_workers: false
+memory_enabled: false
+retrieval_k: 5
+core_memory_max_bytes: 4096
 
 # Tool sandboxing
 tools:
@@ -84,3 +89,19 @@ tools:
   web:
     timeout_seconds: 15
     max_response_bytes: 1048576
+
+# Per-agent provider chains — each CLI agent routes through its own ordered list.
+# Empty or missing entry falls back to the global fallback_chain.
+agent_providers:
+  codex:      [tokenharbor, aihubmix, mistral, dahl, apmix]
+  cursor:     [tokenharbor, aihubmix, dashscope, dahl, apmix]
+  cline:      [aihubmix, tokenharbor, mistral, dahl, apmix]
+  opencode:   [tokenharbor, aihubmix, dashscope, dahl, apmix]
+  grok:       [aihubmix, tokenharbor, groq, dahl, apmix]
+  researcher: [tokenharbor, aihubmix, cohere, dahl, apmix]
+  debugger:   [tokenharbor, aihubmix, groq, dahl, apmix]
+  vibe:       [aihubmix, tokenharbor, cerebras, dahl, apmix]
+  jules:      [aihubmix, tokenharbor, gemini, dahl, apmix]
+  agy:        [aihubmix, tokenharbor, cerebras, dahl, apmix]
+  kilo:       [tokenharbor, aihubmix, groq, dahl, apmix]
+  default:    [tokenharbor, aihubmix, dashscope, openrouter, dahl, apmix, groq, cerebras]
