@@ -52,6 +52,12 @@ export interface Agent {
   metrics?: AgentMetrics; // Compatibility metrics object
   model?: string;
   role?: string;
+  type?: string;
+  provider?: string;
+  icon?: string;
+  load?: number;
+  capabilities?: string[];
+  tools?: string[];
 }
 
 export interface Task {
@@ -149,6 +155,10 @@ export interface SwarmStore {
   logsByTask: Record<string, LogLine[]>;
   selectedLogTaskId: string | null;
 
+  // Memory Cortex events
+  lastMemoryEvent: { type: string; action: string; node?: any; episode?: any; id?: string; timestamp: number } | null;
+  memoryRevision: number;
+
   // Actions - Selection & Filtering
   setSelectedAgentId: (id: string | null) => void;
   setSelectedAgent: (id: string | null) => void;
@@ -170,11 +180,14 @@ export interface SwarmStore {
   updateTask: (id: string, updates: Partial<Task>) => void;
   removeTask: (id: string) => void;
   setTasks: (tasks: Task[]) => void;
+  cancelTask: (id: string) => Promise<boolean>;
+  retryTask: (id: string) => Promise<string | null>;
 
   // Actions - Agents
   updateAgent: (id: string, updates: Partial<Agent>) => void;
   setAgents: (agents: Agent[]) => void;
   triggerBeamPing: (agentId: string, intensity?: number) => void;
+  fetchAgents: () => Promise<void>;
 
   // Actions - Providers
   updateProvider: (id: string, updates: Partial<Provider>) => void;
@@ -188,6 +201,8 @@ export interface SwarmStore {
   updateRoutingRule: (id: string, rule: Partial<RoutingRule>) => void;
   deleteRoutingRule: (id: string) => void;
   setRoutingRules: (rules: RoutingRule[]) => void;
+  fetchRoutingRules: () => Promise<void>;
+  fetchLogs: (taskId?: string) => Promise<LogEntry[]>;
 
   // Actions - Stats & Telemetry
   updateSystemStats: (updates: Partial<SystemStats>) => void;
@@ -298,46 +313,64 @@ function generateId(prefix: string = 'id'): string {
 export function createAgent(config: {
   id: string;
   name: string;
-  badge: string;
+  badge?: string;
   status: AgentStatus;
-  currentTaskId: string | null;
-  tokensUsed: number;
-  avgLatencyMs: number;
-  successRate: number;
-  tasksCompleted: number;
-  activeBeam: boolean;
+  currentTaskId?: string | null;
+  tokensUsed?: number;
+  avgLatencyMs?: number;
+  successRate?: number;
+  tasksCompleted?: number;
+  activeBeam?: boolean;
   model?: string;
   role?: string;
+  type?: string;
+  provider?: string;
+  icon?: string;
+  latency?: string;
+  load?: number;
+  capabilities?: string[];
+  tools?: string[];
 }): Agent {
+  const avgLatencyMs = config.avgLatencyMs ?? (config.latency ? parseInt(config.latency, 10) || 34 : 100);
+  const tasksCompleted = config.tasksCompleted ?? 0;
+  const tokensUsed = config.tokensUsed ?? 0;
+  const successRate = config.successRate ?? 98;
+  const activeBeam = config.activeBeam ?? false;
   return {
     id: config.id,
     name: config.name,
-    badge: config.badge,
+    badge: config.badge ?? config.id.slice(0, 2).toUpperCase(),
     status: config.status,
-    currentTaskId: config.currentTaskId,
-    taskId: config.currentTaskId,
-    tokensUsed: config.tokensUsed,
-    avgLatencyMs: config.avgLatencyMs,
-    avgLatency: config.avgLatencyMs,
-    latency: `${config.avgLatencyMs}ms`,
-    successRate: config.successRate,
-    tasksCompleted: config.tasksCompleted,
-    tasks: config.tasksCompleted,
+    currentTaskId: config.currentTaskId ?? null,
+    taskId: config.currentTaskId ?? null,
+    tokensUsed,
+    avgLatencyMs,
+    avgLatency: avgLatencyMs,
+    latency: config.latency ?? `${avgLatencyMs}ms`,
+    successRate,
+    tasksCompleted,
+    tasks: tasksCompleted,
     activeBeamConnection: {
-      active: config.activeBeam,
+      active: activeBeam,
       target: 'orchestrator-core',
-      intensity: config.activeBeam ? 0.9 : 0.0,
+      intensity: activeBeam ? 0.9 : 0.0,
       lastPing: Date.now(),
     },
-    activeBeam: config.activeBeam,
+    activeBeam,
     metrics: {
-      tasksCompleted: config.tasksCompleted,
-      successRate: config.successRate,
-      avgLatency: config.avgLatencyMs,
-      tokensUsed: config.tokensUsed,
+      tasksCompleted,
+      successRate,
+      avgLatency: avgLatencyMs,
+      tokensUsed,
     },
     model: config.model,
     role: config.role,
+    type: config.type ?? config.id,
+    provider: config.provider ?? config.id,
+    icon: config.icon ?? config.id,
+    load: config.load ?? 0,
+    capabilities: config.capabilities,
+    tools: config.tools,
   };
 }
 
@@ -1035,9 +1068,10 @@ class SwarmWebSocketEngine {
             this.batcher.enqueue((state) => ({
               providers: state.providers.map((p) => ({
                 ...p,
-                health: chain.some((name) => name.toLowerCase() === p.name.toLowerCase())
-                  ? 'green' as const
-                  : p.health,
+                health: chain.some((name) =>
+                    p.name.toLowerCase().includes(name.toLowerCase()) ||
+                    name.toLowerCase().includes(p.name.toLowerCase())
+                  ) ? 'green' as const : p.health,
               })),
               systemStats: {
                 ...state.systemStats,
@@ -1045,7 +1079,69 @@ class SwarmWebSocketEngine {
               },
             }));
           })
-          .catch(() => {}); // ignore if backend unavailable
+          .catch(() => {});
+
+        // Fetch real agent status from /api/agents/status
+        fetch(`${baseURL}/api/agents/status`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((data) => {
+            if (!data) return;
+            const agentList = Array.isArray(data) ? data : data.agents;
+            if (Array.isArray(agentList)) {
+              this.batcher.enqueue((state) => ({
+                agents: state.agents.map((ag) => {
+                  const match = agentList.find((a: any) => a.id === ag.id);
+                  if (match && match.status) {
+                    const status = match.status === 'running' ? 'running' as const : 'idle' as const;
+                    return { ...ag, status };
+                  }
+                  return ag;
+                }),
+              }));
+            }
+          })
+          .catch(() => {});
+
+        // Fetch routing rules from /api/routing/rules
+        fetch(`${baseURL}/api/routing/rules`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((rules) => {
+            if (Array.isArray(rules) && rules.length > 0) {
+              const mapped: RoutingRule[] = rules.map((r: any) => {
+                let field = 'task_type';
+                let operator = 'contains';
+                let val = r.condition || '';
+                if (val.includes(':')) {
+                  const parts = val.split(':');
+                  field = parts[0] || 'task_type';
+                  operator = parts[1] || 'contains';
+                  val = parts.slice(2).join(':') || '';
+                }
+                return {
+                  id: r.id,
+                  field,
+                  operator,
+                  value: val,
+                  targetAgent: r.target_provider || 'opencode',
+                  model: 'claude-3-5-sonnet',
+                  priority: r.priority || 5,
+                  enabled: true,
+                };
+              });
+              this.batcher.enqueue(() => ({ routingRules: mapped }));
+            }
+          })
+          .catch(() => {});
+
+        // Fetch real tasks from /api/tasks on connect
+        fetch(`${baseURL}/api/tasks`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((data) => {
+            if (Array.isArray(data) && data.length > 0) {
+              this.batcher.enqueue(() => ({ tasks: data }));
+            }
+          })
+          .catch((e) => console.error('fetchInitialTasks:', e));
       };
 
       this.ws.onmessage = (event: MessageEvent) => {
@@ -1120,21 +1216,43 @@ class SwarmWebSocketEngine {
         };
       }
 
-      if (type === 'agent_update' && payload.agent && typeof payload.agent === 'object') {
-        const update = payload.agent as Partial<Agent> & { id: string };
-        const agents = state.agents.map((a) => (a.id === update.id ? { ...a, ...update } : a));
-        return { agents };
+      if (type === 'agent_update') {
+        const update = ((payload.agent || payload) as unknown) as Partial<Agent> & { id: string };
+        if (update && update.id) {
+          const agents = state.agents.map((a) => (a.id === update.id ? { ...a, ...update } : a));
+          return { agents };
+        }
       }
 
-      if (type === 'task_update' && payload.task && typeof payload.task === 'object') {
-        const update = payload.task as Partial<Task> & { id: string };
-        const tasks = state.tasks.map((t) => (t.id === update.id ? { ...t, ...update } : t));
-        return { tasks };
+      if (type === 'task_update') {
+        const raw = (payload.task || payload) as Record<string, unknown>;
+        const id = (raw.id || payload.id) as string;
+        if (id) {
+          const rawStatus = (raw.status || payload.status) as string;
+          const status: TaskStatus = rawStatus === 'cancelled' ? 'failed' : ((rawStatus as TaskStatus) || 'failed');
+          const tasks = state.tasks.map((t) => (t.id === id ? { ...t, ...raw, status } : t));
+          return { tasks };
+        }
       }
 
-      if (type === 'task_created' && payload.task && typeof payload.task === 'object') {
-        const task = payload.task as Task;
-        return { tasks: [task, ...state.tasks] };
+      if (type === 'task_created') {
+        const t = (payload.task || payload) as Record<string, unknown>;
+        const id = String(t.id || (1050 + Math.floor(Math.random() * 8000)));
+        const existing = state.tasks.find((task) => task.id === id);
+        if (existing) {
+          return {};
+        }
+        const newTask = createTask({
+          id,
+          agentId: (t.agentId as string) || 'opencode',
+          agentName: (t.agentId as string) || 'opencode',
+          prompt: (t.prompt as string) || '',
+          status: ((t.status as TaskStatus) || 'pending'),
+          priority: (t.priority as number) ?? 5,
+          latencyMs: 0,
+          createdAt: formatTimestamp(),
+        });
+        return { tasks: [newTask, ...state.tasks] };
       }
 
       if (type === 'log' && payload.log && typeof payload.log === 'object') {
@@ -1165,6 +1283,36 @@ class SwarmWebSocketEngine {
       if (type === 'stats' && payload.stats && typeof payload.stats === 'object') {
         const s = payload.stats as Partial<SystemStats>;
         return { systemStats: { ...state.systemStats, ...s } };
+      }
+
+      if (type === 'feedback_recorded') {
+        const taskId = (payload.task_id as string) ?? '';
+        return {
+          logs: [
+            ...state.logs,
+            {
+              id: generateId('feedback'),
+              timestamp: formatTimestamp(),
+              level: 'INFO' as LogLevel,
+              agent: 'system',
+              message: `Feedback recorded${taskId ? ` for task ${taskId}` : ''}`,
+            },
+          ].slice(-300),
+        };
+      }
+
+      if (type === 'memory_updated') {
+        return {
+          lastMemoryEvent: {
+            type: 'memory_updated',
+            action: (payload.action as string) || 'upsert',
+            node: payload.node,
+            episode: payload.episode,
+            id: (payload.id as string) || (payload.node as any)?.id,
+            timestamp: Date.now(),
+          },
+          memoryRevision: (state.memoryRevision || 0) + 1,
+        };
       }
 
       return {};
@@ -1235,11 +1383,15 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
     activeViewFilter: 'ALL',
     wsStatus: 'simulated',
     isSimulating: true,
-    isConnected: true,
+    isConnected: false,
 
     // Streaming log initial state
     logsByTask: {},
     selectedLogTaskId: null,
+
+    // Memory Cortex initial state
+    lastMemoryEvent: null,
+    memoryRevision: 0,
 
     // Selection & Filter Actions
     setSelectedAgentId: (id: string | null) => {
@@ -1304,20 +1456,18 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       });
       set((state) => ({ tasks: [fullTask, ...state.tasks] }));
 
-      // If the real backend is connected, also persist the task to the queue.
-      if (get().wsStatus === 'connected') {
-        fetch('http://localhost:8080/api/tasks/enqueue', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id,
-            agentId,
-            prompt: task.prompt,
-            priority: task.priority ?? 5,
-            type: 'prompt',
-          }),
-        }).catch(() => {}); // fire-and-forget; WS broadcast handles UI update
-      }
+      // Persist task to backend queue
+      fetch('http://localhost:8080/api/tasks/enqueue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          agentId,
+          prompt: task.prompt,
+          priority: task.priority ?? 5,
+          type: 'prompt',
+        }),
+      }).catch(() => {});
     },
 
     updateTask: (id: string, updates: Partial<Task>) =>
@@ -1339,6 +1489,77 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       })),
 
     setTasks: (tasks: Task[]) => set({ tasks }),
+
+    cancelTask: async (id: string) => {
+      // Optimistic local update
+      get().updateTask(id, { status: 'failed' });
+      get().addLog({
+        level: 'WARN',
+        agent: 'orchestrator',
+        message: `Dispatched cancel signal for task #${id}`,
+      });
+
+      try {
+        const res = await fetch(`http://localhost:8080/api/tasks/${encodeURIComponent(id)}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return !!data.ok;
+        }
+      } catch {
+        // Backend unavailable; local cancellation remains
+      }
+      return false;
+    },
+
+    retryTask: async (id: string) => {
+      const task = get().tasks.find((t) => t.id === id);
+      if (!task) return null;
+
+      get().addLog({
+        level: 'INFO',
+        agent: 'orchestrator',
+        message: `Retrying task #${id}: "${task.prompt.slice(0, 30)}..."`,
+      });
+
+      try {
+        const res = await fetch(`http://localhost:8080/api/tasks/${encodeURIComponent(id)}/retry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.new_task_id) {
+            const newTask = createTask({
+              id: data.new_task_id,
+              agentId: task.agentId,
+              agentName: task.agent?.name || task.agentId,
+              prompt: task.prompt,
+              status: 'pending',
+              priority: task.priority,
+              latencyMs: 0,
+              createdAt: formatTimestamp(),
+            });
+            set((state) => ({ tasks: [newTask, ...state.tasks.filter((t) => t.id !== data.new_task_id)] }));
+            return data.new_task_id;
+          }
+        }
+      } catch {
+        // Local fallback retry
+      }
+
+      const fallbackId = String(1050 + Math.floor(Math.random() * 8000));
+      get().addTask({
+        id: fallbackId,
+        agentId: task.agentId,
+        prompt: task.prompt,
+        priority: task.priority,
+        status: 'pending',
+      });
+      return fallbackId;
+    },
 
     // Agent Actions
     updateAgent: (id: string, updates: Partial<Agent>) =>
@@ -1379,6 +1600,30 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
         ),
       })),
 
+    fetchAgents: async () => {
+      try {
+        const res = await fetch('http://localhost:8080/api/agents/status');
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : data.agents;
+          if (Array.isArray(list)) {
+            set((state) => ({
+              agents: state.agents.map((ag) => {
+                const match = list.find((a: any) => a.id === ag.id);
+                if (match && match.status) {
+                  return {
+                    ...ag,
+                    status: match.status === 'running' ? 'running' : 'idle',
+                  };
+                }
+                return ag;
+              }),
+            }));
+          }
+        }
+      } catch {}
+    },
+
     // Provider Actions
     updateProvider: (id: string, updates: Partial<Provider>) =>
       set((state) => ({
@@ -1415,6 +1660,19 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
         };
         const next = [...state.routingRules, fullRule];
         try { localStorage.setItem('ultron_routingRules', JSON.stringify(next)); } catch {}
+
+        // Persist to backend routing rules API
+        fetch('http://localhost:8080/api/routing/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `${fullRule.field} ${fullRule.operator} ${fullRule.value}`,
+            condition: `${fullRule.field}:${fullRule.operator}:${fullRule.value}`,
+            target_provider: fullRule.targetAgent || fullRule.model,
+            priority: fullRule.priority,
+          }),
+        }).catch(() => {});
+
         return { routingRules: next };
       }),
 
@@ -1435,12 +1693,77 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       set((state) => {
         const next = state.routingRules.filter((r) => r.id !== id);
         try { localStorage.setItem('ultron_routingRules', JSON.stringify(next)); } catch {}
+
+        // Delete from backend routing rules API
+        fetch(`http://localhost:8080/api/routing/rules/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        }).catch(() => {});
+
         return { routingRules: next };
       }),
 
     setRoutingRules: (rules: RoutingRule[]) => {
       try { localStorage.setItem('ultron_routingRules', JSON.stringify(rules)); } catch {}
       set({ routingRules: rules });
+    },
+
+    fetchRoutingRules: async () => {
+      try {
+        const res = await fetch('http://localhost:8080/api/routing/rules');
+        if (res.ok) {
+          const rules = await res.json();
+          if (Array.isArray(rules) && rules.length > 0) {
+            const mapped: RoutingRule[] = rules.map((r: any) => {
+              let field = 'task_type';
+              let operator = 'contains';
+              let val = r.condition || '';
+              if (val.includes(':')) {
+                const parts = val.split(':');
+                field = parts[0] || 'task_type';
+                operator = parts[1] || 'contains';
+                val = parts.slice(2).join(':') || '';
+              }
+              return {
+                id: r.id,
+                field,
+                operator,
+                value: val,
+                targetAgent: r.target_provider || 'opencode',
+                model: 'claude-3-5-sonnet',
+                priority: r.priority || 5,
+                enabled: true,
+              };
+            });
+            set({ routingRules: mapped });
+          }
+        }
+      } catch {}
+    },
+
+    fetchLogs: async (taskId?: string) => {
+      try {
+        const url = taskId
+          ? `http://localhost:8080/api/logs?task_id=${encodeURIComponent(taskId)}&limit=100`
+          : 'http://localhost:8080/api/logs?limit=100';
+        const res = await fetch(url);
+        if (res.ok) {
+          const entries = await res.json();
+          if (Array.isArray(entries)) {
+            const mapped: LogEntry[] = entries.map((e: any, i: number) => ({
+              id: `api-log-${e.ts || Date.now()}-${i}`,
+              timestamp: formatTimestamp(new Date(e.ts || Date.now())),
+              level: (e.stream === 'stderr' ? 'WARN' : 'INFO') as LogLevel,
+              agent: e.agent_id || 'system',
+              message: e.line || '',
+            }));
+            if (mapped.length > 0) {
+              set((state) => ({ logs: [...state.logs, ...mapped].slice(-400) }));
+            }
+            return mapped;
+          }
+        }
+      } catch {}
+      return [];
     },
 
     // Telemetry & Stats Actions
@@ -1478,7 +1801,10 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       return wsEngine.send(message);
     },
 
-    setWsStatus: (status: WsConnectionStatus) => set({ wsStatus: status }),
+    setWsStatus: (status: WsConnectionStatus) => set({
+      wsStatus: status,
+      isConnected: status === 'connected',
+    }),
   };
 });
 

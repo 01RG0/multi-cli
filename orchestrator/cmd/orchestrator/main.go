@@ -148,6 +148,14 @@ func main() {
 						"agentId": task.AgentID,
 					},
 				})
+				srv.Hub.Broadcast(map[string]any{
+					"type": "agent_update",
+					"agent": map[string]any{
+						"id":            task.AgentID,
+						"status":        "running",
+						"currentTaskId": task.ID,
+					},
+				})
 
 				onLine := func(agentID, taskID, stream, line string) {
 					ts := time.Now().UnixMilli()
@@ -187,6 +195,14 @@ func main() {
 							"error":  runErr.Error(),
 						},
 					})
+					srv.Hub.Broadcast(map[string]any{
+						"type": "agent_update",
+						"agent": map[string]any{
+							"id":            task.AgentID,
+							"status":        "idle",
+							"currentTaskId": "",
+						},
+					})
 					return "", runErr
 				}
 
@@ -213,6 +229,14 @@ func main() {
 					"task": map[string]any{
 						"id":     task.ID,
 						"status": string(queue.StatusCompleted),
+					},
+				})
+				srv.Hub.Broadcast(map[string]any{
+					"type": "agent_update",
+					"agent": map[string]any{
+						"id":            task.AgentID,
+						"status":        "idle",
+						"currentTaskId": "",
 					},
 				})
 				return result, nil

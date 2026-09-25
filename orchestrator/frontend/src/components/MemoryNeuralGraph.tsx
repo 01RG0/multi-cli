@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { Brain, Plus, Search, ZoomIn, ZoomOut, Maximize2, Tag } from 'lucide-react';
+import { Brain, Plus, Search, ZoomIn, ZoomOut, Maximize2, Tag, RefreshCw } from 'lucide-react';
+import { useSwarmStore } from '../store/useSwarmStore';
 
 type MemType = 'episodic' | 'semantic' | 'working' | 'procedural' | 'index';
 interface MemNode {
@@ -7,6 +8,57 @@ interface MemNode {
   tags: string[]; connections: string[];
   activation: number; x: number; y: number;
 }
+
+interface BackendNode {
+  id: string;
+  label: string;
+  type: string;
+  source: string;
+  confidence: number;
+  content?: string;
+  created_at?: number;
+  updated_at?: number;
+}
+
+interface BackendEdge {
+  id: string;
+  src: string;
+  dst: string;
+  relation: string;
+  weight: number;
+  valid_at: number;
+  invalid_at?: number | null;
+  metadata?: string;
+}
+
+interface GraphResponse {
+  nodes: BackendNode[];
+  edges: BackendEdge[];
+}
+
+function normalizeType(t: string): MemType {
+  const lower = (t || '').toLowerCase();
+  if (lower in TYPE_META) return lower as MemType;
+  if (lower.includes('episod') || lower === 'event' || lower === 'history') return 'episodic';
+  if (lower.includes('work') || lower === 'task' || lower === 'active') return 'working';
+  if (lower.includes('proc') || lower === 'rule' || lower === 'action' || lower === 'skill') return 'procedural';
+  if (lower.includes('idx') || lower === 'index' || lower === 'root') return 'index';
+  return 'semantic';
+}
+
+async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  try {
+    const res = await fetch(endpoint, options);
+    if (res.ok) return (await res.json()) as T;
+  } catch {}
+  const fallbackUrl = endpoint.startsWith('http')
+    ? endpoint
+    : `http://localhost:8080${endpoint}`;
+  const res = await fetch(fallbackUrl, options);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return (await res.json()) as T;
+}
+
 const TYPE_META: Record<MemType, { color: string; glow: string; label: string }> = {
   episodic:   { color: '#f59e0b', glow: '#fbbf24', label: 'Episodic'   },
   semantic:   { color: '#22d3ee', glow: '#67e8f9', label: 'Semantic'   },
@@ -96,15 +148,108 @@ export default function MemoryNeuralGraph() {
   const [hov, setHov]       = useState<string | null>(null);
   const [hovEdge, setHovEdge] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [nodes, setNodes]   = useState<MemNode[]>(SEED_NODES);
+  const [searchMatchIds, setSearchMatchIds] = useState<Set<string> | null>(null);
+  const [nodes, setNodes]   = useState<MemNode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [flashingNodeId, setFlashingNodeId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [nLabel, setNLabel] = useState('');
   const [nType, setNType]   = useState<MemType>('working');
   const [nText, setNText]   = useState('');
   const drag = useRef<{ ox: number; oy: number; px: number; py: number } | null>(null);
+  const posCache = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  useEffect(() => { try { const s = localStorage.getItem('ultron_memgraph'); if (s) setNodes(JSON.parse(s)); } catch {} }, []);
-  useEffect(() => { try { localStorage.setItem('ultron_memgraph', JSON.stringify(nodes)); } catch {} }, [nodes]);
+  // Listen to WebSocket memory_updated events via useSwarmStore
+  const memoryRevision = useSwarmStore(s => s.memoryRevision);
+  const lastMemoryEvent = useSwarmStore(s => s.lastMemoryEvent);
+
+  const mapGraphToMemNodes = useCallback((backendNodes: BackendNode[], backendEdges: BackendEdge[]): MemNode[] => {
+    // Keep SEED_NODES only as an empty-state fallback if SQLite has 0 nodes
+    if (!backendNodes || backendNodes.length === 0) {
+      return SEED_NODES;
+    }
+
+    const adj = new Map<string, string[]>();
+    for (const e of backendEdges) {
+      if (!e.src || !e.dst) continue;
+      if (!adj.has(e.src)) adj.set(e.src, []);
+      adj.get(e.src)!.push(e.dst);
+    }
+
+    const centerX = dims.w > 40 ? dims.w / 2 : 550;
+    const centerY = dims.h > 40 ? dims.h / 2 : 360;
+    const total = backendNodes.length;
+
+    return backendNodes.map((n, i) => {
+      let pos = posCache.current.get(n.id);
+      if (!pos) {
+        const seedMatch = SEED_NODES.find(s => s.id === n.id);
+        if (seedMatch) {
+          pos = { x: seedMatch.x, y: seedMatch.y };
+        } else {
+          const angle = (i / Math.max(1, total)) * 2 * Math.PI - Math.PI / 2;
+          const ring = i % 3;
+          const radius = 160 + ring * 90 + Math.sin(i * 1.9) * 30;
+          pos = {
+            x: Math.round(centerX + Math.cos(angle) * radius),
+            y: Math.round(centerY + Math.sin(angle) * radius),
+          };
+        }
+        posCache.current.set(n.id, pos);
+      }
+
+      const mType = normalizeType(n.type);
+      const connections = adj.get(n.id) || [];
+      const activation = typeof n.confidence === 'number' && n.confidence > 0
+        ? Math.min(1.0, Math.max(0.2, n.confidence))
+        : 0.85;
+
+      return {
+        id: n.id,
+        label: n.label,
+        type: mType,
+        content: n.content || n.label,
+        tags: [mType, n.source].filter(Boolean),
+        connections,
+        activation,
+        x: pos.x,
+        y: pos.y,
+      };
+    });
+  }, [dims.w, dims.h]);
+
+  const fetchGraph = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiFetch<GraphResponse>('/api/memory/graph');
+      const mapped = mapGraphToMemNodes(data?.nodes || [], data?.edges || []);
+      setNodes(mapped);
+    } catch (err) {
+      console.error('Failed to load memory graph from backend:', err);
+      setNodes(prev => prev.length > 0 ? prev : SEED_NODES);
+    } finally {
+      setLoading(false);
+    }
+  }, [mapGraphToMemNodes]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchGraph();
+  }, [fetchGraph]);
+
+  // Re-fetch or flash whenever Ultron records memories via useSwarmStore
+  useEffect(() => {
+    if (memoryRevision > 0) {
+      fetchGraph();
+      const targetId = lastMemoryEvent?.node?.id || lastMemoryEvent?.id;
+      if (targetId) {
+        setFlashingNodeId(targetId);
+        const t = setTimeout(() => setFlashingNodeId(null), 2500);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [memoryRevision, lastMemoryEvent, fetchGraph]);
+
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
@@ -120,11 +265,42 @@ export default function MemoryNeuralGraph() {
   const onUp    = useCallback(() => { drag.current = null; }, []);
   const onWheel = useCallback((e: React.WheelEvent) => { e.preventDefault(); setZoom(z => Math.max(0.18, Math.min(2.6, z - e.deltaY * 0.001))); }, []);
 
-  const filtered = useMemo(() => {
-    if (!search) return null;
-    const q = search.toLowerCase();
-    return new Set(nodes.filter(n => n.label.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || n.tags.some(t => t.includes(q))).map(n => n.id));
+  // Hybrid search querying backend /api/memory/search?q=...&limit=50
+  useEffect(() => {
+    if (!search.trim()) {
+      setSearchMatchIds(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const query = search.trim();
+      const ids = new Set<string>();
+      try {
+        const results = await apiFetch<Array<{ node?: BackendNode; Node?: BackendNode; id?: string }>>(
+          `/api/memory/search?q=${encodeURIComponent(query)}&limit=50`
+        );
+        if (Array.isArray(results)) {
+          for (const item of results) {
+            const nid = item.node?.id || item.Node?.id || item.id;
+            if (nid) ids.add(nid);
+          }
+        }
+      } catch {}
+      // Client-side text match fallback/complement
+      const q = query.toLowerCase();
+      for (const n of nodes) {
+        if (n.label.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || n.tags.some(t => t.toLowerCase().includes(q))) {
+          ids.add(n.id);
+        }
+      }
+      setSearchMatchIds(ids);
+    }, 150);
+    return () => clearTimeout(timer);
   }, [search, nodes]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return null;
+    return searchMatchIds;
+  }, [search, searchMatchIds]);
 
   // depth=3 for selected node (more dendrites), depth=2 otherwise (perf)
   const geomMap = useMemo(() => {
@@ -139,12 +315,62 @@ export default function MemoryNeuralGraph() {
   const selNode  = nodes.find(n => n.id === sel) ?? null;
   const selColor = selNode ? TYPE_META[selNode.type].color : '#fff';
 
-  const addNode = () => {
+  const addNode = async () => {
     if (!nLabel.trim()) return;
-    const id = `mem_${Date.now()}`;
-    const nn: MemNode = { id, label: nLabel.trim(), type: nType, content: nText.trim(), tags: [nType], connections: sel ? [sel] : [], activation: 1.0, x: 620 + (Math.random() - 0.5) * 300, y: 420 + (Math.random() - 0.5) * 200 };
-    setNodes(prev => { const next = [...prev, nn]; if (sel) return next.map(n => n.id === sel ? { ...n, connections: [...new Set([...n.connections, id])] } : n); return next; });
-    setNLabel(''); setNText(''); setShowAdd(false);
+    const label = nLabel.trim();
+    const type = nType;
+    const content = nText.trim() || label;
+
+    try {
+      const res = await apiFetch<{ id: string }>('/api/memory/upsert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label,
+          type,
+          content,
+          confidence: 1.0,
+          source: 'user_stated',
+        }),
+      });
+
+      if (res?.id && sel) {
+        try {
+          await apiFetch('/api/memory/edges', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              src: sel,
+              dst: res.id,
+              relation: 'synapse',
+              weight: 1.0,
+            }),
+          });
+        } catch {}
+      }
+
+      setNLabel('');
+      setNText('');
+      setShowAdd(false);
+      await fetchGraph();
+    } catch (err) {
+      console.error('Failed to upsert node:', err);
+    }
+  };
+
+  const removeNode = async (id: string) => {
+    try {
+      await apiFetch<{ deleted: string }>(`/api/memory/nodes/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.error('Failed to delete node:', err);
+    }
+    setNodes(prev => prev.filter(n => n.id !== id).map(n => ({
+      ...n,
+      connections: n.connections.filter(c => c !== id),
+    })));
+    if (sel === id) setSel(null);
   };
 
   return (
@@ -155,7 +381,12 @@ export default function MemoryNeuralGraph() {
         <div className="flex items-center gap-2">
           <Brain size={13} className="text-amber-500" />
           <span className="text-[11px] font-bold tracking-widest text-zinc-300">MEMORY CORTEX</span>
-          <span className="text-[9px] text-zinc-700 ml-1">SQLite · {nodes.length} neurons</span>
+          <span className="text-[9px] text-zinc-600 ml-1">
+            SQLite · {nodes.length} neuron{nodes.length === 1 ? '' : 's'}
+          </span>
+          <button onClick={() => fetchGraph()} title="Sync with SQLite memory" className="text-zinc-600 hover:text-amber-400 p-0.5 ml-0.5">
+            <RefreshCw size={9} className={loading ? 'animate-spin text-amber-500' : ''} />
+          </button>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="relative">
@@ -296,6 +527,7 @@ export default function MemoryNeuralGraph() {
                 const meta   = TYPE_META[node.type];
                 const color  = meta.color, glow = meta.glow;
                 const isSel  = sel === node.id, isHov = hov === node.id;
+                const isFlash = flashingNodeId === node.id;
                 const isVis  = filtered ? filtered.has(node.id) : true;
                 const geom   = geomMap.get(node.id)!;
                 const cs     = Math.min(node.content.length / 250, 1);
@@ -315,11 +547,11 @@ export default function MemoryNeuralGraph() {
                     onMouseLeave={() => setHov(null)}
                     style={{ cursor: 'pointer' }}>
 
-                    {/* Selection pulse */}
-                    {isSel && (
-                      <circle r={somaR + 6} fill="none" stroke={color} strokeWidth="0.8" opacity="0">
-                        <animate attributeName="r"       values={`${somaR+2};${somaR+26};${somaR+2}`} dur="2.2s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" values="0;0.5;0"                              dur="2.2s" repeatCount="indefinite" />
+                    {/* Selection or live memory flash pulse */}
+                    {(isSel || isFlash) && (
+                      <circle r={somaR + 6} fill="none" stroke={isFlash ? '#f59e0b' : color} strokeWidth={isFlash ? 2.5 : 0.8} opacity="0">
+                        <animate attributeName="r"       values={`${somaR+2};${somaR+32};${somaR+2}`} dur={isFlash ? '0.8s' : '2.2s'} repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="0;0.8;0"                              dur={isFlash ? '0.8s' : '2.2s'} repeatCount="indefinite" />
                       </circle>
                     )}
 
@@ -472,8 +704,8 @@ export default function MemoryNeuralGraph() {
                 })}
               </div>
               <button
-                onClick={() => { setNodes(prev => prev.filter(n => n.id !== selNode.id).map(n => ({ ...n, connections: n.connections.filter(c => c !== selNode.id) }))); setSel(null); }}
-                className="text-[10px] text-red-950 hover:text-red-500 transition-colors text-left mt-1">
+                onClick={() => removeNode(selNode.id)}
+                className="text-[10px] text-red-950 hover:text-red-500 transition-colors text-left mt-1 cursor-pointer">
                 × remove neuron
               </button>
             </div>

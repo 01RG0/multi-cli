@@ -74,11 +74,8 @@ concurrency: 4
 memory_enabled: false       # set to true to inject retrieved context into system prompt
 retrieval_k: 5              # max nodes to retrieve per query
 core_memory_max_bytes: 4096 # max size of the core memory scratchpad
-# Worker pool and memory enabled at startup
-enable_workers: false
-memory_enabled: false
-retrieval_k: 5
-core_memory_max_bytes: 4096
+# Worker pool enabled at startup
+enable_workers: true
 
 # Tool sandboxing
 tools:
