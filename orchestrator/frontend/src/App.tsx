@@ -1,16 +1,18 @@
 import { useEffect } from 'react'
 import useWebSocket, { ReadyState } from 'react-use-websocket'
+import { motion } from 'framer-motion'
 import { useStore } from './store/useStore'
 import type { WsEvent } from './store/useStore'
-import StatsBar from './components/StatsBar'
-import AgentGraph from './components/AgentGraph'
-import TaskList from './components/TaskList'
+import BrainGraph from './components/BrainGraph'
+import LiveFeed from './components/LiveFeed'
+import StatsPanel from './components/StatsPanel'
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws'
 
 export default function App() {
   const applyEvent = useStore((s) => s.applyEvent)
   const setWsConnected = useStore((s) => s.setWsConnected)
+  const wsConnected = useStore((s) => s.wsConnected)
 
   const { lastJsonMessage, readyState } = useWebSocket(WS_URL, {
     shouldReconnect: () => true,
@@ -31,24 +33,153 @@ export default function App() {
     <div
       style={{
         minHeight: '100vh',
-        background: '#0f172a',
+        background: 'radial-gradient(ellipse at 20% 20%, #0f1b35 0%, #0a0f1e 60%, #060b16 100%)',
         color: '#f1f5f9',
-        fontFamily: 'system-ui, sans-serif',
-        padding: 24,
+        fontFamily: "'JetBrains Mono', 'Courier New', ui-monospace, monospace",
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20, color: '#6366f1' }}>
-        AI Agent Orchestrator
-      </h1>
-      <StatsBar />
-      <section style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 14, color: '#64748b', marginBottom: 8 }}>Agent Graph</h2>
-        <AgentGraph />
-      </section>
-      <section>
-        <h2 style={{ fontSize: 14, color: '#64748b', marginBottom: 8 }}>Task Queue</h2>
-        <TaskList />
-      </section>
+      {/* ── Header ── */}
+      <motion.header
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 24px',
+          borderBottom: '1px solid #1e293b',
+          background: 'rgba(15,23,42,0.7)',
+          backdropFilter: 'blur(12px)',
+          flexShrink: 0,
+          zIndex: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 22 }}>🧠</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#e0e7ff', letterSpacing: '0.05em' }}>
+              AI Agent Orchestrator
+            </div>
+            <div style={{ fontSize: 10, color: '#475569', letterSpacing: '0.08em' }}>
+              multi-cli · go · sqlite · react
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <WsIndicator connected={wsConnected} />
+          <a
+            href="/health"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 11, color: '#475569', textDecoration: 'none' }}
+          >
+            /health ↗
+          </a>
+        </div>
+      </motion.header>
+
+      {/* ── 3-column body ── */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          gap: 12,
+          padding: 12,
+          overflow: 'hidden',
+          alignItems: 'flex-start',
+        }}
+      >
+        {/* Left: Stats sidebar */}
+        <motion.div
+          initial={{ opacity: 0, x: -24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          style={{
+            flexShrink: 0,
+            border: '1px solid #1e293b',
+            borderRadius: 12,
+            boxShadow: '0 0 0 1px rgba(99,102,241,0.08), 0 8px 32px rgba(0,0,0,0.4)',
+          }}
+        >
+          <StatsPanel />
+        </motion.div>
+
+        {/* Center: Brain graph */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.15 }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: '1px solid #1e293b',
+            borderRadius: 12,
+            overflow: 'hidden',
+            boxShadow: '0 0 0 1px rgba(99,102,241,0.12), 0 8px 32px rgba(0,0,0,0.5)',
+          }}
+        >
+          <div style={{ padding: '10px 14px 0', background: '#0b1120', borderBottom: '1px solid #1e293b' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', color: '#475569', textTransform: 'uppercase' }}>
+              agent brain
+            </span>
+          </div>
+          <BrainGraph />
+        </motion.div>
+
+        {/* Right: Live feed */}
+        <motion.div
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          style={{
+            width: 420,
+            flexShrink: 0,
+            border: '1px solid #1e293b',
+            borderRadius: 12,
+            overflow: 'hidden',
+            boxShadow: '0 0 0 1px rgba(99,102,241,0.08), 0 8px 32px rgba(0,0,0,0.4)',
+          }}
+        >
+          <LiveFeed />
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+function WsIndicator({ connected }: { connected: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <div style={{ position: 'relative', width: 10, height: 10 }}>
+        {connected && (
+          <motion.div
+            animate={{ scale: [1, 2, 1], opacity: [0.6, 0, 0.6] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '50%',
+              background: '#4ade80',
+            }}
+          />
+        )}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            background: connected ? '#4ade80' : '#f87171',
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 11, color: connected ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+        {connected ? 'live' : 'offline'}
+      </span>
     </div>
   )
 }
