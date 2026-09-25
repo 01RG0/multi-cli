@@ -27,7 +27,7 @@ providers:
     type: openai_compat
     base_url: https://api.apmix.ai/v1
     api_key: ${APMIX_API_KEY}
-    model: deepseek-v4-flash-free
+    model: gpt-6-luna-free
 
   - name: dahl
     type: openai_compat
@@ -55,7 +55,7 @@ providers:
     model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
 
 # Primary provider + fallback order
-fallback_chain: [groq, apmix, dahl, bedrock, tokenharbor, codecraft, aihubmix, ollama, anthropic]
+fallback_chain: [apmix, groq, dahl, bedrock, tokenharbor, codecraft, aihubmix, ollama, anthropic]
 
 max_retries: 3
 cooldown_seconds: 60
@@ -93,15 +93,55 @@ tools:
 # Per-agent provider chains — each CLI agent routes through its own ordered list.
 # Empty or missing entry falls back to the global fallback_chain.
 agent_providers:
-  codex:      [tokenharbor, aihubmix, mistral, dahl, apmix]
-  cursor:     [tokenharbor, aihubmix, dashscope, dahl, apmix]
-  cline:      [aihubmix, tokenharbor, mistral, dahl, apmix]
-  opencode:   [tokenharbor, aihubmix, dashscope, dahl, apmix]
-  grok:       [aihubmix, tokenharbor, groq, dahl, apmix]
-  researcher: [tokenharbor, aihubmix, cohere, dahl, apmix]
-  debugger:   [tokenharbor, aihubmix, groq, dahl, apmix]
-  vibe:       [aihubmix, tokenharbor, cerebras, dahl, apmix]
-  jules:      [aihubmix, tokenharbor, gemini, dahl, apmix]
-  agy:        [aihubmix, tokenharbor, cerebras, dahl, apmix]
-  kilo:       [tokenharbor, aihubmix, groq, dahl, apmix]
-  default:    [tokenharbor, aihubmix, dashscope, openrouter, dahl, apmix, groq, cerebras]
+  codex:      [apmix, tokenharbor, aihubmix, mistral, dahl]
+  cursor:     [apmix, tokenharbor, aihubmix, dashscope, dahl]
+  cline:      [apmix, aihubmix, tokenharbor, mistral, dahl]
+  opencode:   [apmix, tokenharbor, aihubmix, dashscope, dahl]
+  grok:       [apmix, aihubmix, tokenharbor, groq, dahl]
+  researcher: [apmix, tokenharbor, aihubmix, cohere, dahl]
+  debugger:   [apmix, tokenharbor, aihubmix, groq, dahl]
+  vibe:       [apmix, aihubmix, tokenharbor, cerebras, dahl]
+  jules:      [apmix, aihubmix, tokenharbor, gemini, dahl]
+  agy:        [apmix, aihubmix, tokenharbor, cerebras, dahl]
+  kilo:       [apmix, tokenharbor, aihubmix, groq, dahl]
+  hermes:     [apmix, tokenharbor, aihubmix, mistral, dahl]
+  default:    [apmix, tokenharbor, aihubmix, dashscope, openrouter, dahl, groq, cerebras]
+
+# Available CLI agents
+cli_agents:
+  - name: hermes
+    command: hermes
+    description: "Nous Research Hermes agent - deep tool-use, reasoning and autonomous workflows"
+  - name: opencode
+    command: opencode
+    description: "Full-Stack Code Architect & AST Synthesizer"
+  - name: codex
+    command: codex
+    description: "Sandboxed Deterministic Code Execution Engine"
+  - name: vibe
+    command: vibe
+    description: "Rapid UI Prototyping & Hot-Fix Specialist"
+  - name: agy
+    command: agy
+    description: "Antigravity Autonomous Swarm Orchestration Core"
+  - name: grok
+    command: grok
+    description: "Formal Verification, Mathematical Logic & Deep Auditing"
+  - name: cline
+    command: cline
+    description: "Autonomous Agentic Terminal & File System Refactorer"
+  - name: kilo
+    command: kilo
+    description: "Micro-Latency Token Optimizer & Fast Completion"
+  - name: cursor
+    command: cursor
+    description: "Context-Aware Multi-File Code Editor Agent"
+  - name: researcher
+    command: researcher
+    description: "Deep Documentation, Technical Extraction & Web Mining"
+  - name: debugger
+    command: debugger
+    description: "Stacktrace Diagnostics, Root-Cause Isolation & Fixer"
+  - name: jules
+    command: jules
+    description: "Google Jules Async Background Engineering Specialist"
