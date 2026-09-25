@@ -1,7 +1,8 @@
+@import "tailwindcss";
+
 *, *::before, *::after { box-sizing: border-box; }
 html, body {
-  margin: 0;
-  padding: 0;
+  margin: 0; padding: 0;
   background: #020817;
   color: #e2e8f0;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -12,11 +13,27 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 9999px; }
 
-/* ReactFlow dark overrides */
-.react-flow__controls { background: rgba(15,23,42,0.8) !important; border: 1px solid #1e293b !important; border-radius: 8px !important; backdrop-filter: blur(8px); }
-.react-flow__controls-button { background: transparent !important; border-bottom: 1px solid #1e293b !important; color: #64748b !important; fill: #64748b !important; }
-.react-flow__controls-button:hover { background: #1e293b !important; fill: #94a3b8 !important; }
+/* ReactFlow overrides — loaded after @xyflow/react/dist/style.css in main.tsx */
+.react-flow__controls {
+  background: rgba(2,8,23,0.85) !important;
+  border: 1px solid rgba(99,102,241,0.2) !important;
+  border-radius: 10px !important;
+  backdrop-filter: blur(12px) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+  color: #475569 !important;
+  fill: #475569 !important;
+  transition: all 0.12s !important;
+}
+.react-flow__controls-button:hover {
+  background: rgba(99,102,241,0.12) !important;
+  fill: #a5b4fc !important;
+  color: #a5b4fc !important;
+}
 .react-flow__controls-button:last-child { border-bottom: none !important; }
-.react-flow__minimap { background: rgba(15,23,42,0.8) !important; border: 1px solid #1e293b !important; border-radius: 8px !important; }
-.react-flow__background { opacity: 0.4; }
-.react-flow__edge-path { stroke-width: 2; }
+.react-flow__background { opacity: 0.25; }
+.react-flow__edge-path { stroke-width: 1.5; }
+.react-flow__pane { cursor: default !important; }
