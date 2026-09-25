@@ -3,7 +3,7 @@ package memory
 import "database/sql"
 
 // Migrate creates the full graph memory schema:
-// nodes, edges (temporal), episodes, FTS5 virtual tables.
+// nodes, edges (temporal), episodes, FTS5 virtual tables, cron_jobs, routing_rules.
 func Migrate(db *sql.DB) error {
 	_, err := db.Exec(`
 -- Knowledge graph nodes
@@ -78,6 +78,34 @@ CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(
 CREATE TRIGGER IF NOT EXISTS episodes_ai AFTER INSERT ON episodes BEGIN
     INSERT INTO episodes_fts(rowid, id, agent_id, content) VALUES (new.rowid, new.id, new.agent_id, new.content);
 END;
+
+-- Core memory: a single mutable scratchpad row
+CREATE TABLE IF NOT EXISTS core_memory (
+    id         INTEGER PRIMARY KEY CHECK(id=1),
+    content    TEXT    NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+-- Scheduled cron jobs
+CREATE TABLE IF NOT EXISTS cron_jobs (
+    id         TEXT PRIMARY KEY,
+    cron       TEXT NOT NULL,
+    agent_id   TEXT NOT NULL,
+    prompt     TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_run   INTEGER DEFAULT 0,
+    enabled    INTEGER DEFAULT 1
+);
+
+-- Routing rules for provider selection
+CREATE TABLE IF NOT EXISTS routing_rules (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    condition       TEXT NOT NULL,
+    target_provider TEXT NOT NULL,
+    priority        INTEGER DEFAULT 0,
+    created_at      INTEGER NOT NULL
+);
 `)
 	return err
 }
