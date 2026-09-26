@@ -38,13 +38,13 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	// Per-CLI headless/batch flags — prompt is always appended as the last argument.
 	switch name {
 	case "opencode":
-		a.args = []string{"run"}
+		a.args = []string{"--auto", "run"}
 	case "codex":
 		a.args = []string{"exec", "--approve-for-me"}
 	case "cline":
-		a.args = []string{"--message"}
+		a.args = []string{"--auto-approve", "true", "--message"}
 	case "kilo", "kilocode":
-		a.args = []string{"run"}
+		a.args = []string{"--auto", "run"}
 	case "vibe":
 		a.args = []string{"--auto-approve", "-p"}
 	case "agy", "researcher", "debugger":
@@ -53,19 +53,17 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 		if a.binary == "" {
 			a.binary = "hermes"
 		}
-		// hermes chat -q "<prompt>" — non-interactive single query, like agy --print
-		// uses logged-in Nous Portal auth (no --provider flag needed)
 		a.args = []string{"chat", "-q"}
 	case "pi":
-		a.args = []string{"--print"}
+		a.args = []string{"--approve", "--print"}
 	case "kimi", "kimocode":
 		a.args = []string{"-p"}
 	case "jules":
 		a.args = []string{"new"}
-	case "grok", "agent":
-		a.args = []string{"-p"}
+	case "grok":
+		a.args = []string{"--always-approve", "-p"}
 	case "cursor":
-		// Official Cursor agent CLI — model=auto is the free tier, --print for non-interactive stdout
+		// Official Cursor agent CLI — model=auto (free tier), non-interactive
 		a.args = []string{"--model", "auto", "--print", "--force", "-p"}
 	case "deepseek", "dsh":
 		a.args = []string{"web"}
