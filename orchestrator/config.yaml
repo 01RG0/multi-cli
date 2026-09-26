@@ -192,7 +192,7 @@ cli_agents:
 
   - name: hermes
     command: /home/rootuser/.local/bin/hermes
-    description: "Nous Hermes — hermes chat --provider openrouter -q (non-interactive like agy --print)"
+    description: "Nous Hermes mixture-of-agents — hermes chat -q (Nous Portal auth, non-interactive)"
 
   - name: researcher
     command: /home/rootuser/.local/bin/agy

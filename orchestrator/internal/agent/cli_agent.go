@@ -54,8 +54,8 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 			a.binary = "hermes"
 		}
 		// hermes chat -q "<prompt>" — non-interactive single query, like agy --print
-		// --provider openrouter uses OPENROUTER_API_KEY which is set in .env
-		a.args = []string{"chat", "--provider", "openrouter", "-q"}
+		// uses logged-in Nous Portal auth (no --provider flag needed)
+		a.args = []string{"chat", "-q"}
 	case "pi":
 		a.args = []string{"--print"}
 	case "kimi", "kimocode":
