@@ -48,12 +48,12 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "vibe":
 		a.args = []string{"--auto-approve", "-p"}
 	case "agy", "researcher", "debugger":
-		a.args = []string{"--print"}
+		a.args = []string{"--dangerously-skip-permissions", "--print"}
 	case "hermes":
 		if a.binary == "" {
 			a.binary = "hermes"
 		}
-		a.args = []string{"chat", "-q"}
+		a.args = []string{"chat", "--yolo", "-q"}
 	case "pi":
 		a.args = []string{"--approve", "--print"}
 	case "kimi", "kimocode":
