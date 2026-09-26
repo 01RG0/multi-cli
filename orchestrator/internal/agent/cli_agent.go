@@ -53,7 +53,9 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 		if a.binary == "" {
 			a.binary = "hermes"
 		}
-		a.args = []string{"--cli", "-z"}
+		// hermes chat -q "<prompt>" — non-interactive single query, like agy --print
+		// --provider openrouter uses OPENROUTER_API_KEY which is set in .env
+		a.args = []string{"chat", "--provider", "openrouter", "-q"}
 	case "pi":
 		a.args = []string{"--print"}
 	case "kimi", "kimocode":
@@ -63,7 +65,9 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "grok", "agent":
 		a.args = []string{"-p"}
 	case "cursor":
-		a.args = []string{"--headless"}
+		// aider --message "<prompt>" — context-aware multi-file editor, routed through our proxy
+		// OPENAI_API_KEY is set to "proxy" since aider requires a non-empty value
+		a.args = []string{"--yes-always", "--no-git", "--openai-api-base", "http://localhost:8080/v1", "--openai-api-key", "proxy", "--model", "openai/gpt-4o-mini", "-m"}
 	case "deepseek", "dsh":
 		a.args = []string{"web"}
 	case "harness":

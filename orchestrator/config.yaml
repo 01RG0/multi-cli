@@ -192,7 +192,7 @@ cli_agents:
 
   - name: hermes
     command: /home/rootuser/.local/bin/hermes
-    description: "Deep Tool-Use Reasoning & Autonomous Workflows"
+    description: "Nous Hermes — hermes chat --provider openrouter -q (non-interactive like agy --print)"
 
   - name: researcher
     command: /home/rootuser/.local/bin/agy
@@ -221,8 +221,8 @@ cli_agents:
     description: "xAI Grok 1.0.41 — grok -p (OIDC auth from ~/.grok/auth.json)"
 
   - name: cursor
-    command: cursor
-    description: "Cursor AI — GUI only, no headless mode"
+    command: /home/rootuser/.local/bin/aider
+    description: "aider — context-aware multi-file editor via proxy (Cursor equivalent)"
 
   - name: harness
     command: harness
