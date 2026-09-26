@@ -212,6 +212,19 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/api/providers", s.handleProviderHealth)
 
+	// Serve React frontend — SPA fallback: unknown paths → index.html
+	distDir := "frontend/dist"
+	fs := http.FileServer(http.Dir(distDir))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Let the file server try first; if the file doesn't exist serve index.html
+		path := distDir + r.URL.Path
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			http.ServeFile(w, r, distDir+"/index.html")
+			return
+		}
+		fs.ServeHTTP(w, r)
+	})
+
 	return mux
 }
 
