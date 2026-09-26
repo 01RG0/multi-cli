@@ -98,7 +98,7 @@ func main() {
 		agentNames := []string{
 			"opencode", "codex", "vibe", "agy", "grok",
 			"kilo", "kilocode", "cline", "researcher", "debugger", "jules", "cursor",
-			"hermes", "deepseek", "harness", "kimocode", "pi",
+			"hermes", "deepseek", "harness", "pi",
 		}
 		// Build binary overrides from config.yaml cli_agents
 		binaryOverrides := make(map[string]string, len(cfg.CLIAgents))

@@ -207,10 +207,6 @@ cli_agents:
     command: /usr/local/bin/pi
     description: "Pi terminal agent — pi --print (GROQ_API_KEY / CEREBRAS_API_KEY)"
 
-  - name: kimocode
-    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/kimi
-    description: "Kimi Code CLI — kimi -p (KIMI_API_KEY / MOONSHOT_API_KEY)"
-
   - name: jules
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/jules
     description: "Google Jules async cloud coding agent — jules new (needs google OAuth)"

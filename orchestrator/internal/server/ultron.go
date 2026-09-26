@@ -369,7 +369,7 @@ func (s *Server) handleTaskRetry(w http.ResponseWriter, r *http.Request) {
 var knownAgents = []string{
 	"opencode", "codex", "vibe", "agy", "grok", "cline", "kilo", "kilocode",
 	"cursor", "researcher", "debugger", "jules",
-	"hermes", "deepseek", "harness", "kimocode", "pi",
+	"hermes", "deepseek", "harness", "pi",
 }
 
 func (s *Server) handleAgentStatus(w http.ResponseWriter, r *http.Request) {
