@@ -58,7 +58,10 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "debugger":
 		a.args = []string{"--prompt"}
 	case "hermes":
-		// TODO: confirm headless flags for Nous Research Hermes CLI
+		// Nous Research Hermes agent - deep tool-use, reasoning and autonomous workflows
+		if a.binary == "" {
+			a.binary = "hermes"
+		}
 		a.args = []string{"--prompt"}
 	case "deepseek":
 		// TODO: confirm headless flags for DeepSeek CLI client
@@ -79,6 +82,33 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 // Name returns the agent identifier.
 func (a *CLIAgent) Name() string { return a.name }
 
+// resolveCommand resolves the executable binary and argv arguments to run.
+// For hermes, if the bare "hermes" binary is not in PATH, it falls back to
+// "hermes-agent", "python -m hermes", or "node".
+func (a *CLIAgent) resolveCommand(prompt string) (string, []string) {
+	binary := a.binary
+	var argv []string
+	if a.name == "hermes" {
+		if _, err := exec.LookPath(binary); err != nil {
+			if p, err2 := exec.LookPath("hermes-agent"); err2 == nil {
+				binary = p
+			} else if py, err3 := exec.LookPath("python"); err3 == nil {
+				binary = py
+				argv = append(argv, "-m", "hermes")
+			} else if py3, err4 := exec.LookPath("python3"); err4 == nil {
+				binary = py3
+				argv = append(argv, "-m", "hermes")
+			} else if node, err5 := exec.LookPath("node"); err5 == nil {
+				binary = node
+				argv = append(argv, "-e", `require("hermes")`)
+			}
+		}
+	}
+	argv = append(argv, a.args...)
+	argv = append(argv, prompt)
+	return binary, argv
+}
+
 // Run dispatches prompt to the CLI binary and returns (output, error).
 // On Linux, CLIs are wrapped with `script -qc` to provide a PTY so that
 // tools that check isatty(stdin) don't refuse to run headlessly.
@@ -87,13 +117,13 @@ func (a *CLIAgent) Run(ctx context.Context, prompt string) (string, error) {
 	defer cancel()
 
 	var cmd *exec.Cmd
-	argv := append(a.args, prompt)
+	bin, argv := a.resolveCommand(prompt)
 
 	if runtime.GOOS == "linux" {
-		fullCmd := shellQuote(a.binary) + " " + shellQuoteSlice(argv)
+		fullCmd := shellQuote(bin) + " " + shellQuoteSlice(argv)
 		cmd = exec.CommandContext(ctx, "script", "-qc", fullCmd, "/dev/null")
 	} else {
-		cmd = exec.CommandContext(ctx, a.binary, argv...)
+		cmd = exec.CommandContext(ctx, bin, argv...)
 	}
 	cmd.Env = proxyEnv(a.name)
 
@@ -115,8 +145,8 @@ func (a *CLIAgent) RunStreaming(ctx context.Context, taskID, prompt string, onLi
 	ctx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 
-	argv := append(a.args, prompt)
-	cmd := exec.CommandContext(ctx, a.binary, argv...)
+	bin, argv := a.resolveCommand(prompt)
+	cmd := exec.CommandContext(ctx, bin, argv...)
 	cmd.Env = proxyEnv(a.name)
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -164,26 +194,44 @@ func (a *CLIAgent) RunStreaming(ctx context.Context, taskID, prompt string, onLi
 	return strings.TrimSpace(strings.Join(allLines, "\n")), nil
 }
 
-// Available reports whether the binary can be found in PATH.
+// Available reports whether the binary can be found in PATH or fallback.
 func (a *CLIAgent) Available() bool {
-	_, err := exec.LookPath(a.binary)
-	return err == nil
+	if _, err := exec.LookPath(a.binary); err == nil {
+		return true
+	}
+	if a.name == "hermes" {
+		if _, err := exec.LookPath("hermes-agent"); err == nil {
+			return true
+		}
+		if _, err := exec.LookPath("python"); err == nil {
+			return true
+		}
+		if _, err := exec.LookPath("python3"); err == nil {
+			return true
+		}
+		if _, err := exec.LookPath("node"); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
-// proxyEnv returns os.Environ() with ANTHROPIC_BASE_URL set to the
+// proxyEnv returns os.Environ() with ANTHROPIC_BASE_URL and OPENAI_BASE_URL set to the
 // per-agent proxy path so each agent uses its own provider chain.
 func proxyEnv(agentName string) []string {
 	env := os.Environ()
 	baseURL := fmt.Sprintf("http://localhost:8080/agent/%s", agentName)
-	// Override any existing ANTHROPIC_BASE_URL
-	result := make([]string, 0, len(env)+1)
+	// Override any existing ANTHROPIC_BASE_URL and OPENAI_BASE_URL
+	result := make([]string, 0, len(env)+2)
 	for _, e := range env {
-		if strings.HasPrefix(e, "ANTHROPIC_BASE_URL=") {
+		if strings.HasPrefix(e, "ANTHROPIC_BASE_URL=") || strings.HasPrefix(e, "OPENAI_BASE_URL=") {
 			continue
 		}
 		result = append(result, e)
 	}
-	return append(result, "ANTHROPIC_BASE_URL="+baseURL)
+	result = append(result, "ANTHROPIC_BASE_URL="+baseURL)
+	result = append(result, "OPENAI_BASE_URL="+baseURL)
+	return result
 }
 
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][A-Za-z0-9]`)

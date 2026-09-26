@@ -87,9 +87,14 @@ export default function RoutingRulesBuilder() {
   const addRoutingRule  = (useSwarmStore as any)((s: any) => s.addRoutingRule);
   const updateRoutingRule = (useSwarmStore as any)((s: any) => s.updateRoutingRule);
   const deleteRoutingRule = (useSwarmStore as any)((s: any) => s.deleteRoutingRule);
+  const fetchRoutingRules = (useSwarmStore as any)((s: any) => s.fetchRoutingRules);
   const agents          = (useSwarmStore as any)((s: any) => s.agents);
   const tasks           = (useSwarmStore as any)((s: any) => s.tasks) ?? [];
   const logs            = (useSwarmStore as any)((s: any) => s.logs)  ?? [];
+
+  React.useEffect(() => {
+    if (fetchRoutingRules) fetchRoutingRules();
+  }, [fetchRoutingRules]);
 
   const agentIds: string[] = useMemo(
     () => (agents?.map((a: any) => a.id) ?? FALLBACK_AGENTS),

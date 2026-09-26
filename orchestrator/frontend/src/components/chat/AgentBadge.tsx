@@ -15,7 +15,7 @@ interface AgentConfig {
 
 // Source: cli_agent.go confirms vibe, codex, agy, grok, cline.
 // "agent" is the generic name: agent.New(t.AgentID, t.AgentID, ...) in main.go
-// ASSUMED: opencode, cursor, kilo, jules, researcher, debugger — not in current backend.
+// ASSUMED: opencode, cursor, kilo, jules, researcher, debugger, hermes, deepseek, harness, kimocode, pi
 const AGENT_MAP: Record<string, AgentConfig> = {
   // CONFIRMED (cli_agent.go switch + main.go usage)
   vibe:       { label: 'Vibe',      abbr: 'VI', dotClass: 'bg-purple-400'  },
@@ -25,12 +25,18 @@ const AGENT_MAP: Record<string, AgentConfig> = {
   cline:      { label: 'Cline',     abbr: 'CL', dotClass: 'bg-rose-400'    },
   agent:      { label: 'Agent',     abbr: 'AG', dotClass: 'bg-zinc-400'    },
   // ASSUMED (task spec — not yet in cli_agent.go)
+  hermes:     { label: 'Hermes',    abbr: 'HE', dotClass: 'bg-amber-400'   },
   opencode:   { label: 'OpenCode',  abbr: 'OC', dotClass: 'bg-emerald-400' },
+  deepseek:   { label: 'DeepSeek',  abbr: 'DS', dotClass: 'bg-cyan-400'    },
   cursor:     { label: 'Cursor',    abbr: 'CU', dotClass: 'bg-sky-400'     },
-  kilo:       { label: 'Kilo',      abbr: 'KI', dotClass: 'bg-amber-400'   },
+  kilo:       { label: 'Kilo',      abbr: 'KI', dotClass: 'bg-yellow-400'  },
   jules:      { label: 'Jules',     abbr: 'JU', dotClass: 'bg-fuchsia-400' },
   researcher: { label: 'Research',  abbr: 'RE', dotClass: 'bg-lime-400'    },
   debugger:   { label: 'Debugger',  abbr: 'DB', dotClass: 'bg-red-400'     },
+  harness:    { label: 'Harness',   abbr: 'HN', dotClass: 'bg-indigo-400'  },
+  kimocode:   { label: 'KimoCode',  abbr: 'KC', dotClass: 'bg-violet-400'  },
+  pi:         { label: 'Pi',        abbr: 'PI', dotClass: 'bg-pink-400'    },
+  ultron:     { label: 'Ultron',    abbr: 'Ω',  dotClass: 'bg-white'       },
 };
 
 const SIZE_CLASSES = {
@@ -46,9 +52,10 @@ export interface AgentBadgeProps {
 }
 
 export function AgentBadge({ agentId, showLabel = true, size = 'md' }: AgentBadgeProps) {
-  const cfg = AGENT_MAP[agentId] ?? {
+  const normalizedId = agentId.replace(/^@/, '').toLowerCase();
+  const cfg = AGENT_MAP[normalizedId] ?? {
     label: agentId,
-    abbr: agentId.slice(0, 2).toUpperCase(),
+    abbr: normalizedId.slice(0, 2).toUpperCase(),
     dotClass: 'bg-zinc-500',
   };
   const sz = SIZE_CLASSES[size];

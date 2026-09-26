@@ -3,6 +3,7 @@ import Bubble from '@ant-design/x/es/bubble';
 import Sender from '@ant-design/x/es/sender';
 import type { BubbleItemType } from '@ant-design/x/es/bubble/interface';
 import type { ChatMessage } from './useOrchestatorChat';
+import { AttachmentList, RichTextWithLinks, LinkPreviewCard } from './AttachmentViews';
 
 // Re-export stub for parallel agent scope
 export function AgentBadge() { return null; }
@@ -13,29 +14,51 @@ interface ChatMessagesProps {
   onSend: (text: string) => void;
 }
 
-// Detect code blocks and render with copy button
-function renderContent(content: string) {
+// Detect code blocks, links, and render attachments
+function renderMessageContent(msg: ChatMessage) {
+  const content = msg.content || '';
+  const hasAttachments = Boolean(msg.attachments && msg.attachments.length > 0);
+
+  // Extract URLs for preview cards
+  const urls = content.match(/https?:\/\/[^\s<>"'()[\]{}]+/g) || [];
+  const uniqueUrls = Array.from(new Set(urls));
+
+  let body = null;
   if (!content.includes('```')) {
-    return <span className="whitespace-pre-wrap break-words">{content}</span>;
+    body = <RichTextWithLinks text={content} />;
+  } else {
+    const parts = content.split(/(```[\s\S]*?```)/g);
+    body = (
+      <>
+        {parts.map((part, i) => {
+          if (part.startsWith('```')) {
+            const lines = part.slice(3).split('\n');
+            const lang = lines[0].trim();
+            const code = lines.slice(1, -1).join('\n');
+            return <CodeBlock key={i} code={code} lang={lang} />;
+          }
+          return <RichTextWithLinks key={i} text={part} />;
+        })}
+      </>
+    );
   }
 
-  const parts = content.split(/(```[\s\S]*?```)/g);
   return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('```')) {
-          const lines = part.slice(3).split('\n');
-          const lang = lines[0].trim();
-          const code = lines.slice(1, -1).join('\n');
-          return <CodeBlock key={i} code={code} lang={lang} />;
-        }
-        return (
-          <span key={i} className="whitespace-pre-wrap break-words">
-            {part}
-          </span>
-        );
-      })}
-    </>
+    <div className="flex flex-col">
+      {content && body}
+      {hasAttachments && (
+        <div className={content ? 'mt-2' : ''}>
+          <AttachmentList attachments={msg.attachments} />
+        </div>
+      )}
+      {uniqueUrls.length > 0 && !hasAttachments && (
+        <div className="mt-2 space-y-1">
+          {uniqueUrls.slice(0, 3).map((url, i) => (
+            <LinkPreviewCard key={i} url={url} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -108,7 +131,7 @@ export function ChatMessages({
     },
     contentRender: msg.status === 'streaming' && !msg.content
       ? undefined
-      : (_content: string) => renderContent(msg.content),
+      : (_content: string) => renderMessageContent(msg),
   }));
 
   const handleSubmit = useCallback(

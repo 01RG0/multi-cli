@@ -3,7 +3,7 @@ import {
   Filter, Search, ChevronDown, Check, Minus,
   Terminal, Globe, Clock, MoreHorizontal,
   X, RefreshCw, Eye, ArrowUpCircle, Download,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Play, Plus, RotateCw
 } from 'lucide-react';
 import { useSwarmStore, Task, TaskStatus, ViewFilter } from '../store/useSwarmStore';
 
@@ -48,12 +48,19 @@ export const TaskQueueTable: React.FC = () => {
     activeViewFilter,
     setActiveViewFilter,
     updateTask,
+    addTask,
+    cancelTask,
+    retryTask,
   } = useSwarmStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [menuOpenTaskId, setMenuOpenTaskId] = useState<string | null>(null);
   const [isBulkDropdownOpen, setIsBulkDropdownOpen] = useState(false);
+  const [showEnqueueModal, setShowEnqueueModal] = useState(false);
+  const [enqueuePrompt, setEnqueuePrompt] = useState('');
+  const [enqueueAgentId, setEnqueueAgentId] = useState('opencode');
+  const [enqueuePriority, setEnqueuePriority] = useState(5);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const bulkDropdownRef = useRef<HTMLDivElement>(null);
@@ -177,17 +184,35 @@ export const TaskQueueTable: React.FC = () => {
   };
 
   const handleActionCancel = (task: Task) => {
-    updateTask(task.id, { status: 'failed' });
+    cancelTask(task.id);
+    setMenuOpenTaskId(null);
+  };
+
+  const handleActionRetry = (task: Task) => {
+    retryTask(task.id);
     setMenuOpenTaskId(null);
   };
 
   // Bulk Actions
   const handleBulkCancel = () => {
     selectedTasks.forEach((id) => {
-      updateTask(id, { status: 'failed' });
+      cancelTask(id);
     });
     setSelectedTasks(new Set());
     setIsBulkDropdownOpen(false);
+  };
+
+  const handleEnqueueSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enqueuePrompt.trim()) return;
+    addTask({
+      prompt: enqueuePrompt.trim(),
+      agentId: enqueueAgentId,
+      priority: enqueuePriority,
+      status: 'pending',
+    });
+    setEnqueuePrompt('');
+    setShowEnqueueModal(false);
   };
 
   const handleBulkReassign = () => {
@@ -283,6 +308,17 @@ export const TaskQueueTable: React.FC = () => {
               </button>
             )}
           </div>
+
+          {/* Enqueue Task Button */}
+          <button
+            type="button"
+            onClick={() => setShowEnqueueModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold bg-white text-black hover:bg-zinc-200 rounded-md transition shadow-sm active:scale-95 shrink-0"
+            title="Enqueue new task"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>ENQUEUE</span>
+          </button>
 
           {/* Bulk Actions Dropdown Anchor */}
           <div className="relative" ref={bulkDropdownRef}>
@@ -528,6 +564,16 @@ export const TaskQueueTable: React.FC = () => {
                             <RefreshCw className="w-3.5 h-3.5 text-zinc-400" />
                             <span>Reassign</span>
                           </button>
+                          {(task.status === 'completed' || task.status === 'failed') && (
+                            <button
+                              type="button"
+                              onClick={() => handleActionRetry(task)}
+                              className="w-full text-left px-3 py-1.5 text-emerald-400 hover:bg-emerald-950/30 flex items-center gap-2 transition-colors"
+                            >
+                              <RotateCw className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Retry</span>
+                            </button>
+                          )}
                           <div className="h-px bg-zinc-800 my-1" />
                           <button
                             type="button"
@@ -626,6 +672,95 @@ export const TaskQueueTable: React.FC = () => {
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* Enqueue Task Modal */}
+      {showEnqueueModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-[#121215] border border-zinc-700 rounded-xl shadow-2xl p-5 font-mono text-xs flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Play className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-white text-sm">ENQUEUE SWARM TASK</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEnqueueModal(false)}
+                className="text-zinc-500 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEnqueueSubmit} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-zinc-400 text-[10px] tracking-wider uppercase mb-1.5">
+                  Task Prompt *
+                </label>
+                <textarea
+                  autoFocus
+                  required
+                  rows={3}
+                  value={enqueuePrompt}
+                  onChange={(e) => setEnqueuePrompt(e.target.value)}
+                  placeholder="Enter directive / instructions for the agent..."
+                  className="w-full bg-black border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500 resize-none font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 text-[10px] tracking-wider uppercase mb-1.5">
+                    Target Agent
+                  </label>
+                  <select
+                    value={enqueueAgentId}
+                    onChange={(e) => setEnqueueAgentId(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-lg p-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-500 font-mono"
+                  >
+                    {agents.map((ag) => (
+                      <option key={ag.id} value={ag.id}>
+                        {ag.name} ({ag.status})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 text-[10px] tracking-wider uppercase mb-1.5">
+                    Priority (1-10)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={enqueuePriority}
+                    onChange={(e) => setEnqueuePriority(Number(e.target.value))}
+                    className="w-full bg-black border border-zinc-800 rounded-lg p-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowEnqueueModal(false)}
+                  className="px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!enqueuePrompt.trim()}
+                  className="px-4 py-1.5 rounded-lg bg-white text-black font-bold hover:bg-zinc-200 transition disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Play className="w-3.5 h-3.5 fill-black" />
+                  <span>Dispatch Task</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

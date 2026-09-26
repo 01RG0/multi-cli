@@ -236,14 +236,41 @@ type DispatchBurst = {
 };
 
 export const SwarmRadialTopology: React.FC = () => {
-  const storeAgents      = (useSwarmStore as any)((s: any) => s.agents);
-  const logs             = (useSwarmStore as any)((s: any) => s.logs)   || [];
-  const tasks            = (useSwarmStore as any)((s: any) => s.tasks)  || [];
-  const selectedAgentId  = (useSwarmStore as any)((s: any) => s.selectedAgentId) || null;
-  const setSelectedAgent = (useSwarmStore as any)((s: any) => s.setSelectedAgent) || (() => {});
-  const addLog           = (useSwarmStore as any)((s: any) => s.addLog) || (() => {});
+  const storeAgents        = (useSwarmStore as any)((s: any) => s.agents);
+  const logs               = (useSwarmStore as any)((s: any) => s.logs)   || [];
+  const tasks              = (useSwarmStore as any)((s: any) => s.tasks)  || [];
+  const selectedAgentId    = (useSwarmStore as any)((s: any) => s.selectedAgentId) || null;
+  const setSelectedAgentId = (useSwarmStore as any)((s: any) => s.setSelectedAgentId) || (() => {});
+  const setSelectedAgent   = (useSwarmStore as any)((s: any) => s.setSelectedAgent) || (() => {});
+  const triggerBeamPing    = (useSwarmStore as any)((s: any) => s.triggerBeamPing) || (() => {});
+  const fetchAgents        = (useSwarmStore as any)((s: any) => s.fetchAgents) || (() => {});
+  const addLog             = (useSwarmStore as any)((s: any) => s.addLog) || (() => {});
 
   const agents = storeAgents?.length ? storeAgents : mockAgents;
+
+  useEffect(() => {
+    fetchAgents();
+  }, [fetchAgents]);
+
+  const handleSelectAgent = (id: string) => {
+    setSelectedAgent(id);
+    setSelectedAgentId(id);
+    triggerBeamPing(id, 1.0);
+  };
+
+  const agentLiveLatency = useMemo(() => {
+    const latMap: Record<string, string> = {};
+    agents.forEach((ag: any) => {
+      const agTasks = tasks.filter((t: any) => (t.agentId === ag.id || t.agent?.id === ag.id) && t.latencyMs > 0);
+      if (agTasks.length > 0) {
+        const avg = Math.round(agTasks.reduce((acc: number, t: any) => acc + t.latencyMs, 0) / agTasks.length);
+        latMap[ag.id] = `${avg}ms`;
+      } else {
+        latMap[ag.id] = ag.latency || (ag.avgLatencyMs ? `${ag.avgLatencyMs}ms` : '35ms');
+      }
+    });
+    return latMap;
+  }, [agents, tasks]);
 
   const [input, setInput]               = useState('');
   const [searchQuery, setSearchQuery]   = useState('');
@@ -429,7 +456,7 @@ export const SwarmRadialTopology: React.FC = () => {
             const isActive = agent.status === 'running' || agent.status === 'active';
             const isLive   = (agentActivity[agent.id] || 0) > now - ACTIVITY_TTL;
             return (
-              <div key={agent.id} onClick={() => setSelectedAgent(agent.id)}
+              <div key={agent.id} onClick={() => handleSelectAgent(agent.id)}
                 className={`flex items-center gap-2 px-3 py-2.5 border-b border-[#111] cursor-pointer transition-all duration-150 hover:bg-[#0f0f0f] relative group ${isSel ? 'bg-[#0b0b0e]' : ''}`}
               >
                 <div className={`absolute left-0 top-0 bottom-0 w-0.5 origin-left transition-transform duration-150 ${isSel ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100 opacity-50'}`}
@@ -463,7 +490,7 @@ export const SwarmRadialTopology: React.FC = () => {
                     <span className="text-[8px] px-1 border rounded ml-1 shrink-0" style={{ borderColor: color, color }}>{agent.status}</span>
                   </div>
                   <div className="flex gap-1.5 text-[9px] text-zinc-700 mt-0.5">
-                    <span className="flex items-center gap-0.5"><Clock size={8} />{agent.latency || (agent.avgLatency + 'ms')}</span>
+                    <span className="flex items-center gap-0.5"><Clock size={8} />{agentLiveLatency[agent.id] || agent.latency || '35ms'}</span>
                     <span className="flex items-center gap-0.5"><Zap size={8} />#{agent.tasks ?? agent.tasksCompleted ?? 0}</span>
                   </div>
                 </div>
@@ -733,7 +760,7 @@ export const SwarmRadialTopology: React.FC = () => {
               return (
                 <g key={`node-${ag.id}`}
                   transform={`translate(${ag.x}, ${ag.y})`}
-                  onClick={() => setSelectedAgent(ag.id)}
+                  onClick={() => handleSelectAgent(ag.id)}
                   onMouseEnter={() => setHoveredAgent(ag.id)}
                   onMouseLeave={() => setHoveredAgent(null)}
                   className="cursor-pointer"
@@ -865,7 +892,7 @@ export const SwarmRadialTopology: React.FC = () => {
                           <rect x={-64} y={-nodeR - 62} width={128} height={54} rx="5"
                             fill="#070b12" stroke="#2a2a30" strokeWidth="0.8" filter="url(#gs)" />
                           <text x={-54} y={-nodeR - 46} fill="#444" fontSize="8.5" fontFamily="monospace">Latency</text>
-                          <text x={ 54} y={-nodeR - 46} fill="#e4e4e7" fontSize="8.5" fontFamily="monospace" textAnchor="end">{ag.latency || (ag.avgLatency + 'ms')}</text>
+                          <text x={ 54} y={-nodeR - 46} fill="#e4e4e7" fontSize="8.5" fontFamily="monospace" textAnchor="end">{agentLiveLatency[ag.id] || ag.latency || (ag.avgLatency + 'ms')}</text>
                           <text x={-54} y={-nodeR - 34} fill="#444" fontSize="8.5" fontFamily="monospace">Tasks</text>
                           <text x={ 54} y={-nodeR - 34} fill="#e4e4e7" fontSize="8.5" fontFamily="monospace" textAnchor="end">{ag.tasks ?? ag.tasksCompleted ?? 0}</text>
                           <text x={-54} y={-nodeR - 22} fill="#444" fontSize="8.5" fontFamily="monospace">Model</text>

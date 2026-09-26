@@ -11,7 +11,7 @@ export const CockpitHeader: React.FC<CockpitHeaderProps> = ({
   onOpenCommandPalette,
   onNewTask,
 }) => {
-  const { systemStats, agents, isConnected } = useSwarmStore();
+  const { systemStats, agents, wsStatus, connectWebSocket } = useSwarmStore();
 
   const activeCount = Object.values(agents).filter((a) => a.status === 'running').length || 4;
   const totalAgents = Object.keys(agents).length || 9;
@@ -84,14 +84,36 @@ export const CockpitHeader: React.FC<CockpitHeaderProps> = ({
         </button>
 
         {/* Backend Connectivity Status Dot */}
-        <div className="flex items-center gap-1.5 text-xs font-mono text-zinc-400 px-2">
+        <button
+          onClick={() => {
+            if (wsStatus === 'disconnected' || wsStatus === 'simulated') {
+              connectWebSocket();
+            }
+          }}
+          className="flex items-center gap-1.5 text-xs font-mono text-zinc-400 px-2 py-1 rounded hover:bg-zinc-900 transition"
+          title={`WebSocket Status: ${wsStatus}. Click to connect/reconnect.`}
+        >
           <span
             className={`w-2 h-2 rounded-full ${
-              isConnected ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-zinc-600'
+              wsStatus === 'connected'
+                ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                : wsStatus === 'connecting'
+                ? 'bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]'
+                : wsStatus === 'simulated'
+                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]'
             }`}
           />
-          <span className="hidden md:inline">{isConnected ? 'LIVE WS' : 'SIMULATION'}</span>
-        </div>
+          <span className="hidden md:inline font-semibold">
+            {wsStatus === 'connected'
+              ? 'LIVE WS'
+              : wsStatus === 'connecting'
+              ? 'CONNECTING'
+              : wsStatus === 'simulated'
+              ? 'SIMULATION'
+              : 'OFFLINE'}
+          </span>
+        </button>
 
         {/* Pure White CTA Button */}
         <button

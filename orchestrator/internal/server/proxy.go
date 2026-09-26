@@ -122,12 +122,20 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			epCtx := context.Background()
 			compact, _ := json.Marshal(map[string]string{"user": lastUserText, "assistant": assistantText})
-			if _, err := s.graph.AppendEpisode(epCtx, memory.Episode{
+			ep := memory.Episode{
 				AgentID: agentID,
 				Kind:    "message",
 				Content: string(compact),
-			}); err != nil {
+			}
+			if epID, err := s.graph.AppendEpisode(epCtx, ep); err != nil {
 				log.Printf("memory: episode write: %v", err)
+			} else if s.Hub != nil {
+				ep.ID = epID
+				s.Hub.Broadcast(map[string]any{
+					"type":    "memory_updated",
+					"action":  "upsert",
+					"episode": ep,
+				})
 			}
 		}()
 	}
@@ -421,12 +429,20 @@ func (s *Server) proxyWithRouter(w http.ResponseWriter, r *http.Request, rtr *pr
 		go func() {
 			epCtx := context.Background()
 			compact, _ := json.Marshal(map[string]string{"user": lastUserText, "assistant": assistantText})
-			if _, err := s.graph.AppendEpisode(epCtx, memory.Episode{
+			ep := memory.Episode{
 				AgentID: agentID,
 				Kind:    "message",
 				Content: string(compact),
-			}); err != nil {
+			}
+			if epID, err := s.graph.AppendEpisode(epCtx, ep); err != nil {
 				log.Printf("memory: episode write: %v", err)
+			} else if s.Hub != nil {
+				ep.ID = epID
+				s.Hub.Broadcast(map[string]any{
+					"type":    "memory_updated",
+					"action":  "upsert",
+					"episode": ep,
+				})
 			}
 		}()
 	}

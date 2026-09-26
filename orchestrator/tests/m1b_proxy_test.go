@@ -130,3 +130,46 @@ func TestProxyStream(t *testing.T) {
 		t.Errorf("stream missing message_stop event:\n%s", body)
 	}
 }
+
+func TestHermesAgentProxyRouting(t *testing.T) {
+	cfg := &config.Config{
+		ProxyPort:       8080,
+		MaxRetries:      2,
+		CooldownSeconds: 10,
+		FallbackChain:   []string{"mock"},
+		AgentProviders: map[string][]string{
+			"hermes": {"mock"},
+		},
+	}
+	mock := &mockProvider{name: "mock"}
+	router := provider.NewRouter(mock, nil, 1, 10)
+	srv := server.New(router, cfg, nil)
+	srv.SetProviderMap(map[string]provider.Provider{"mock": mock})
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	reqBody := map[string]any{
+		"model":      "hermes-3",
+		"max_tokens": 100,
+		"messages":   []map[string]string{{"role": "user", "content": "Execute autonomous tool task"}},
+	}
+	data, _ := json.Marshal(reqBody)
+
+	resp, err := http.Post(ts.URL+"/agent/hermes/v1/messages", "application/json", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("hermes proxy routing: got %d: %s", resp.StatusCode, body)
+	}
+
+	var result map[string]any
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["type"] != "message" {
+		t.Errorf("type: got %v want message", result["type"])
+	}
+}
+

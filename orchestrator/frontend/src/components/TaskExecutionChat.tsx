@@ -32,16 +32,28 @@ export const TaskExecutionChat: React.FC = () => {
     },
   ]);
 
+  const activeTaskId = store.selectedTaskId || agent.currentTaskId || '1024';
+
   const handleSend = () => {
     if (!inputMessage.trim()) return;
-    setMessages((prev) => [...prev, { role: 'user', text: inputMessage }]);
+    const text = inputMessage.trim();
+    setMessages((prev) => [...prev, { role: 'user', text }]);
     setInputMessage('');
+
+    // Dispatch real task to orchestrator backend queue
+    store.addTask({
+      prompt: text,
+      agentId: selectedAgentId,
+      priority: 8,
+      status: 'pending',
+    });
+
     setTimeout(() => {
       setMessages((prev) => [
         ...prev,
         {
           role: 'agent',
-          text: `Acknowledged directive. Agent @${selectedAgentId} executing sub-routine with high priority.`,
+          text: `Acknowledged directive. Agent @${selectedAgentId} enqueued sub-routine with priority 8.`,
         },
       ]);
     }, 800);
@@ -60,15 +72,19 @@ export const TaskExecutionChat: React.FC = () => {
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
           <span className="font-bold text-white text-[11px] tracking-wider uppercase">
-            TASK #40505600
+            TASK #{activeTaskId}
           </span>
-          <span className="text-[10px] text-zinc-500">11:12:35 PM</span>
+          <span className="text-[10px] text-zinc-500">LIVE</span>
         </div>
 
         <div className="flex items-center gap-3 text-[10px]">
           <span className="text-zinc-400">AGENT: <span className="text-white font-bold">{selectedAgentId}</span></span>
           <span className="text-zinc-400">TOKENS: <span className="text-white font-bold">{agent.tokensUsed.toLocaleString()}</span></span>
-          <button className="px-2 py-0.5 border border-zinc-700 hover:border-zinc-500 rounded text-zinc-300 hover:text-white transition">
+          <button
+            onClick={() => store.cancelTask(String(activeTaskId))}
+            className="px-2 py-0.5 border border-zinc-700 hover:border-rose-700 hover:text-rose-400 rounded text-zinc-300 transition"
+            title="Cancel active task"
+          >
             Cancel
           </button>
         </div>

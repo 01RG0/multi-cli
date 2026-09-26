@@ -155,6 +155,20 @@ export default function ProviderChain() {
   const [newKey, setNewKey] = useState('');
   const [newUrl, setNewUrl] = useState('');
 
+  React.useEffect(() => {
+    fetch('http://localhost:8080/health')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data || !Array.isArray(data.chain)) return;
+        const chain: string[] = data.chain;
+        setProviders(providers.map(p => ({
+          ...p,
+          health: chain.some(name => name.toLowerCase() === p.name.toLowerCase()) ? 'green' : p.health,
+        })));
+      })
+      .catch(() => {});
+  }, []);
+
   const handleAddProvider = () => {
     if (!newName.trim()) return;
     const key = newKey.trim();

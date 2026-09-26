@@ -115,3 +115,11 @@ func TestCLIAgentRunStreaming(t *testing.T) {
 		t.Errorf("expected at least 1 line callback, got %d", len(lines))
 	}
 }
+
+func TestCLIAgentHermes(t *testing.T) {
+	a := agent.New("hermes", "hermes", 5*time.Minute)
+	if a.Name() != "hermes" {
+		t.Errorf("expected name 'hermes', got %q", a.Name())
+	}
+}
+

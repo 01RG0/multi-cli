@@ -6,11 +6,15 @@ import { useSwarmStore } from '../store/useSwarmStore';
 interface TerminalCommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onNavigateTab?: (tabId: string) => void;
+  onNewTask?: () => void;
 }
 
 export const TerminalCommandPalette: React.FC<TerminalCommandPaletteProps> = ({
   open,
   onOpenChange,
+  onNavigateTab,
+  onNewTask,
 }) => {
   const store = useSwarmStore();
 
@@ -26,31 +30,46 @@ export const TerminalCommandPalette: React.FC<TerminalCommandPaletteProps> = ({
   }, [open, onOpenChange]);
 
   const execute = (cmd: string) => {
-    if (cmd.startsWith('/task new')) {
-      const prompt = window.prompt('Enter task prompt:');
-      if (prompt) {
-        store.addTask({
-          agentId: 'opencode',
-          prompt,
-          status: 'running',
-          priority: 8,
-          latencyMs: 140,
-        });
+    if (cmd.startsWith('/task new') || cmd === '/task') {
+      if (onNewTask) {
+        onNewTask();
+      } else {
+        const prompt = window.prompt('Enter task prompt:');
+        if (prompt) {
+          store.addTask({
+            agentId: store.selectedAgentId || 'opencode',
+            prompt,
+            status: 'pending',
+            priority: 8,
+          });
+        }
       }
     } else if (cmd.startsWith('/cancel')) {
+      const activeTasks = store.tasks.filter((t) => t.status === 'running' || t.status === 'pending');
+      activeTasks.forEach((t) => store.cancelTask(t.id));
       store.addLog({
         level: 'WARN',
         agent: 'orchestrator',
-        message: 'Dispatched broadcast CANCEL signal to active swarm workers',
+        message: `Dispatched broadcast CANCEL signal to ${activeTasks.length} active swarm task(s)`,
       });
     } else if (cmd.startsWith('/priority')) {
+      store.tasks.forEach((t, i) => {
+        store.updateTask(t.id, { priority: Math.min(10, Math.max(1, ((i % 5) + 1) * 2)) });
+      });
       store.addLog({
         level: 'INFO',
         agent: 'router',
-        message: 'Updated task priority queue heuristics',
+        message: 'Rebalanced task priority queue heuristics',
       });
     } else if (cmd.startsWith('/agent')) {
       store.setSelectedAgentId('opencode');
+      if (onNavigateTab) onNavigateTab('agent');
+    } else if (cmd.startsWith('/tab ') || cmd.startsWith('/nav ')) {
+      const target = cmd.split(' ')[1];
+      if (target && onNavigateTab) onNavigateTab(target);
+    } else if (cmd.startsWith('/status')) {
+      store.fetchAgents();
+      if (onNavigateTab) onNavigateTab('swarm');
     }
     onOpenChange(false);
   };
