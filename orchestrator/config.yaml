@@ -35,11 +35,65 @@ providers:
     api_key: ${DAHL_API_KEY}
     model: deepseek-ai/DeepSeek-V4-Flash-0731
 
-  - name: ollama
+  - name: cerebras
     type: openai_compat
-    base_url: http://localhost:11434
-    api_key: ""
-    model: llama3.2
+    base_url: https://api.cerebras.ai/v1
+    api_key: ${CEREBRAS_API_KEY}
+    model: llama-3.3-70b
+
+  - name: mistral
+    type: openai_compat
+    base_url: https://api.mistral.ai/v1
+    api_key: ${MISTRAL_API_KEY}
+    model: mistral-small-latest
+
+  - name: openrouter
+    type: openai_compat
+    base_url: https://openrouter.ai/api/v1
+    api_key: ${OPENROUTER_API_KEY}
+    model: meta-llama/llama-3.1-8b-instruct:free
+
+  - name: cohere
+    type: openai_compat
+    base_url: https://api.cohere.ai/compatibility/v1
+    api_key: ${COHERE_API_KEY}
+    model: command-r
+
+  - name: apertis
+    type: openai_compat
+    base_url: ${APERTIS_BASE_URL}
+    api_key: ${APERTIS_API_KEY}
+    model: gpt-4o-mini
+
+  - name: atessa
+    type: openai_compat
+    base_url: ${ATESSA_BASE_URL}
+    api_key: ${ATESSA_API_KEY}
+    model: gpt-4o-mini
+
+  - name: pooled
+    type: openai_compat
+    base_url: ${POOLED_BASE_URL}
+    api_key: ${POOLED_API_KEY}
+    model: gpt-4o-mini
+
+  - name: anyapi
+    type: openai_compat
+    base_url: ${ANYAPI_BASE_URL}
+    api_key: ${ANYAPI_API_KEY}
+    model: gpt-4o-mini
+
+  - name: dashscope
+    type: openai_compat
+    base_url: ${ALIBABA_BASE_URL}
+    api_key: ${ALIBABA_API_KEY}
+    model: qwen-plus
+
+  - name: gemini
+    type: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key: ${GEMINI_API_KEY}
+    model: gemini-2.0-flash
 
   - name: anthropic
     type: anthropic
@@ -54,8 +108,8 @@ providers:
     secret_key: ${AWS_SECRET_ACCESS_KEY}
     model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
 
-# Primary provider + fallback order
-fallback_chain: [apmix, groq, dahl, bedrock, tokenharbor, codecraft, aihubmix, ollama, anthropic]
+# Primary provider + fallback order — free/cheap providers first; bedrock & anthropic only when all else fails
+fallback_chain: [apmix, groq, dahl, cerebras, tokenharbor, aihubmix, codecraft, mistral, openrouter, apertis, atessa, pooled, anyapi, dashscope, cohere, gemini, bedrock, anthropic]
 
 max_retries: 3
 cooldown_seconds: 60
@@ -104,41 +158,75 @@ agent_providers:
   hermes:     [apmix, tokenharbor, aihubmix, mistral, dahl]
   default:    [apmix, tokenharbor, aihubmix, dashscope, openrouter, dahl, groq, cerebras]
 
-# Available CLI agents
+# Available CLI agents — command overrides absolute binary path on server
+# Agents without a command entry use the name looked up via PATH
 cli_agents:
-  - name: hermes
-    command: hermes
-    description: "Nous Research Hermes agent - deep tool-use, reasoning and autonomous workflows"
+  # ── Confirmed working on server ──────────────────────────────────────────────
   - name: opencode
-    command: opencode
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/opencode
     description: "Full-Stack Code Architect & AST Synthesizer"
+
   - name: codex
-    command: codex
-    description: "Sandboxed Deterministic Code Execution Engine"
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/codex
+    description: "Sandboxed Code Execution Engine (own OpenAI OAuth)"
+
+  - name: cline
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/cline
+    description: "Autonomous File System Refactorer"
+
+  - name: kilo
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/kilo
+    description: "Micro-Latency Token Optimizer (own free mode)"
+
+  - name: kilocode
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/kilocode
+    description: "KiloCode extended — multi-file code synthesis"
+
   - name: vibe
-    command: vibe
-    description: "Rapid UI Prototyping & Hot-Fix Specialist"
+    command: /usr/local/bin/vibe
+    description: "Rapid UI Prototyping (own Mistral key)"
+
   - name: agy
-    command: agy
-    description: "Antigravity Autonomous Swarm Orchestration Core"
+    command: /home/rootuser/.local/bin/agy
+    description: "Autonomous Swarm Orchestration (own subscription)"
+
+  - name: hermes
+    command: /home/rootuser/.local/bin/hermes
+    description: "Deep Tool-Use Reasoning & Autonomous Workflows"
+
+  - name: researcher
+    command: /home/rootuser/.local/bin/agy
+    description: "Deep Documentation, Technical Extraction & Web Mining"
+
+  - name: debugger
+    command: /home/rootuser/.local/bin/agy
+    description: "Stacktrace Diagnostics, Root-Cause Isolation & Fixer"
+
+  # ── Pending / future install ──────────────────────────────────────────────────
   - name: grok
     command: grok
-    description: "Formal Verification, Mathematical Logic & Deep Auditing"
-  - name: cline
-    command: cline
-    description: "Autonomous Agentic Terminal & File System Refactorer"
-  - name: kilo
-    command: kilo
-    description: "Micro-Latency Token Optimizer & Fast Completion"
+    description: "xAI Grok CLI — Formal Verification & Deep Auditing (install pending)"
+
   - name: cursor
     command: cursor
-    description: "Context-Aware Multi-File Code Editor Agent"
-  - name: researcher
-    command: researcher
-    description: "Deep Documentation, Technical Extraction & Web Mining"
-  - name: debugger
-    command: debugger
-    description: "Stacktrace Diagnostics, Root-Cause Isolation & Fixer"
+    description: "Cursor AI headless agent (install pending)"
+
   - name: jules
     command: jules
-    description: "Google Jules Async Background Engineering Specialist"
+    description: "Google Jules Async Background Engineering (install pending)"
+
+  - name: deepseek
+    command: deepseek
+    description: "DeepSeek CLI — Reasoning & Code (install pending)"
+
+  - name: harness
+    command: harness
+    description: "Harness AI Coding Assistant (install pending)"
+
+  - name: kimocode
+    command: kimocode
+    description: "Kimo Code CLI (install pending)"
+
+  - name: pi
+    command: pi
+    description: "Pi.ai (Inflection AI) CLI (install pending)"

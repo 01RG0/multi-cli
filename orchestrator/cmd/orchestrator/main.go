@@ -93,15 +93,27 @@ func main() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		// Build the full CLI agent map (original + new agents).
+		// Build CLI agent map — all known agents registered; config.yaml cli_agents
+		// entries override the binary path with an absolute path when provided.
 		agentNames := []string{
 			"opencode", "codex", "vibe", "agy", "grok",
-			"kilo", "cline", "researcher", "debugger", "jules", "cursor",
+			"kilo", "kilocode", "cline", "researcher", "debugger", "jules", "cursor",
 			"hermes", "deepseek", "harness", "kimocode", "pi",
+		}
+		// Build binary overrides from config.yaml cli_agents
+		binaryOverrides := make(map[string]string, len(cfg.CLIAgents))
+		for _, ac := range cfg.CLIAgents {
+			if ac.Command != "" {
+				binaryOverrides[ac.Name] = ac.Command
+			}
 		}
 		agents := make(map[string]*agent.CLIAgent, len(agentNames))
 		for _, name := range agentNames {
-			agents[name] = agent.New(name, name, 5*time.Minute)
+			binary := name // default: look up by name in PATH
+			if override, ok := binaryOverrides[name]; ok {
+				binary = override
+			}
+			agents[name] = agent.New(name, binary, 5*time.Minute)
 		}
 
 		obs := improvement.NewObserver(200)
