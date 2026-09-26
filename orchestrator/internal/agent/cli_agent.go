@@ -121,7 +121,7 @@ func (a *CLIAgent) Run(ctx context.Context, prompt string) (string, error) {
 	} else {
 		cmd = exec.CommandContext(ctx, bin, argv...)
 	}
-	cmd.Env = proxyEnv(a.name)
+	cmd.Env = cleanEnv()
 
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -143,7 +143,7 @@ func (a *CLIAgent) RunStreaming(ctx context.Context, taskID, prompt string, onLi
 
 	bin, argv := a.resolveCommand(prompt)
 	cmd := exec.CommandContext(ctx, bin, argv...)
-	cmd.Env = proxyEnv(a.name)
+	cmd.Env = cleanEnv()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -212,21 +212,17 @@ func (a *CLIAgent) Available() bool {
 	return false
 }
 
-// proxyEnv returns os.Environ() with ANTHROPIC_BASE_URL and OPENAI_BASE_URL set to the
-// per-agent proxy path so each agent uses its own provider chain.
-func proxyEnv(agentName string) []string {
+// cleanEnv returns os.Environ() with ANTHROPIC_BASE_URL and OPENAI_BASE_URL stripped
+// so each CLI agent uses its own native auth/free-tier rather than our proxy.
+func cleanEnv() []string {
 	env := os.Environ()
-	baseURL := fmt.Sprintf("http://localhost:8080/agent/%s", agentName)
-	// Override any existing ANTHROPIC_BASE_URL and OPENAI_BASE_URL
-	result := make([]string, 0, len(env)+2)
+	result := make([]string, 0, len(env))
 	for _, e := range env {
 		if strings.HasPrefix(e, "ANTHROPIC_BASE_URL=") || strings.HasPrefix(e, "OPENAI_BASE_URL=") {
 			continue
 		}
 		result = append(result, e)
 	}
-	result = append(result, "ANTHROPIC_BASE_URL="+baseURL)
-	result = append(result, "OPENAI_BASE_URL="+baseURL)
 	return result
 }
 
