@@ -367,7 +367,7 @@ func (s *Server) handleTaskRetry(w http.ResponseWriter, r *http.Request) {
 // ─── Agent status ────────────────────────────────────────────────────────────
 
 var knownAgents = []string{
-	"opencode", "codex", "vibe", "agy", "grok", "cline", "kilo",
+	"opencode", "codex", "vibe", "agy", "grok", "cline", "kilo", "kilocode",
 	"cursor", "researcher", "debugger", "jules",
 	"hermes", "deepseek", "harness", "kimocode", "pi",
 }
