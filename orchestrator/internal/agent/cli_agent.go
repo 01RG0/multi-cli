@@ -65,9 +65,8 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "grok", "agent":
 		a.args = []string{"-p"}
 	case "cursor":
-		// aider --message "<prompt>" — context-aware multi-file editor, routed through our proxy
-		// OPENAI_API_KEY is set to "proxy" since aider requires a non-empty value
-		a.args = []string{"--yes-always", "--no-git", "--openai-api-base", "http://localhost:8080/v1", "--openai-api-key", "proxy", "--model", "openai/gpt-4o-mini", "-m"}
+		// Official Cursor agent CLI — model=auto is the free tier, --print for non-interactive stdout
+		a.args = []string{"--model", "auto", "--print", "--force", "-p"}
 	case "deepseek", "dsh":
 		a.args = []string{"web"}
 	case "harness":

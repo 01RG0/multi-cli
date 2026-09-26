@@ -164,7 +164,7 @@ cli_agents:
   # ── Confirmed working on server ──────────────────────────────────────────────
   - name: opencode
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/opencode
-    description: "Full-Stack Code Architect & AST Synthesizer"
+    description: "opencode run — free models incl. SuperBunny; own provider config"
 
   - name: codex
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/codex
@@ -172,15 +172,15 @@ cli_agents:
 
   - name: cline
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/cline
-    description: "Autonomous File System Refactorer"
+    description: "cline --message — Free Models Router mode + own free model pool"
 
   - name: kilo
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/kilo
-    description: "Micro-Latency Token Optimizer (own free mode)"
+    description: "kilo run — auto free mode, own built-in quota"
 
   - name: kilocode
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/kilocode
-    description: "KiloCode extended — multi-file code synthesis"
+    description: "kilocode run — auto free mode, multi-file synthesis"
 
   - name: vibe
     command: /usr/local/bin/vibe
@@ -188,7 +188,7 @@ cli_agents:
 
   - name: agy
     command: /home/rootuser/.local/bin/agy
-    description: "Autonomous Swarm Orchestration (own subscription)"
+    description: "agy --print — own subscription; mixes Gemini, Claude, GPT providers"
 
   - name: hermes
     command: /home/rootuser/.local/bin/hermes
@@ -205,7 +205,7 @@ cli_agents:
   # ── Newly installed ───────────────────────────────────────────────────────────
   - name: pi
     command: /usr/local/bin/pi
-    description: "Pi terminal agent — pi --print (GROQ_API_KEY / CEREBRAS_API_KEY)"
+    description: "pi --print — own models (better than llama); GROQ_API_KEY / CEREBRAS_API_KEY"
 
   - name: jules
     command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/jules
@@ -221,8 +221,8 @@ cli_agents:
     description: "xAI Grok 1.0.41 — grok -p (OIDC auth from ~/.grok/auth.json)"
 
   - name: cursor
-    command: /home/rootuser/.local/bin/aider
-    description: "aider — context-aware multi-file editor via proxy (Cursor equivalent)"
+    command: /home/rootuser/.local/bin/agent
+    description: "Official Cursor agent CLI — model=auto (free tier), headless --print --force"
 
   - name: harness
     command: harness
