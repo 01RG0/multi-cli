@@ -202,31 +202,32 @@ cli_agents:
     command: /home/rootuser/.local/bin/agy
     description: "Stacktrace Diagnostics, Root-Cause Isolation & Fixer"
 
+  # ── Newly installed ───────────────────────────────────────────────────────────
+  - name: pi
+    command: /usr/local/bin/pi
+    description: "Pi terminal agent — pi --print (GROQ_API_KEY / CEREBRAS_API_KEY)"
+
+  - name: kimocode
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/kimi
+    description: "Kimi Code CLI — kimi -p (KIMI_API_KEY / MOONSHOT_API_KEY)"
+
+  - name: jules
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/jules
+    description: "Google Jules async cloud coding agent — jules new (needs google OAuth)"
+
+  - name: deepseek
+    command: /home/rootuser/.nvm/versions/node/v24.20.0/bin/dsh
+    description: "DeepSeek Harness — dsh web (DeepSeek profile launcher)"
+
   # ── Pending / future install ──────────────────────────────────────────────────
   - name: grok
     command: grok
-    description: "xAI Grok CLI — Formal Verification & Deep Auditing (install pending)"
+    description: "xAI Grok CLI — install pending"
 
   - name: cursor
     command: cursor
-    description: "Cursor AI headless agent (install pending)"
-
-  - name: jules
-    command: jules
-    description: "Google Jules Async Background Engineering (install pending)"
-
-  - name: deepseek
-    command: deepseek
-    description: "DeepSeek CLI — Reasoning & Code (install pending)"
+    description: "Cursor AI — GUI only, no headless mode"
 
   - name: harness
     command: harness
-    description: "Harness AI Coding Assistant (install pending)"
-
-  - name: kimocode
-    command: kimocode
-    description: "Kimo Code CLI (install pending)"
-
-  - name: pi
-    command: pi
-    description: "Pi.ai (Inflection AI) CLI (install pending)"
+    description: "Harness AI Coding CLI — install pending"

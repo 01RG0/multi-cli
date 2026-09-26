@@ -35,46 +35,39 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 		timeout = 5 * time.Minute
 	}
 	a := &CLIAgent{name: name, binary: binary, timeout: timeout}
-	// Per-CLI headless flags so TUI CLIs run non-interactively
+	// Per-CLI headless/batch flags — prompt is always appended as the last argument.
 	switch name {
-	case "vibe":
-		a.args = []string{"--yolo", "--output", "text"}
+	case "opencode":
+		a.args = []string{"run"}
 	case "codex":
-		a.args = []string{"--approve-for-me"}
-	case "agy":
-		a.args = []string{"--prompt"}
-	case "grok", "agent":
-		a.args = []string{"-p"}
+		a.args = []string{"exec", "--approve-for-me"}
 	case "cline":
 		a.args = []string{"--message"}
-	case "cursor":
-		a.args = []string{"--headless"}
-	case "kilo":
-		a.args = []string{"--non-interactive"}
-	case "jules":
-		a.args = []string{"--no-interactive"}
-	case "researcher":
-		a.args = []string{"--query"}
-	case "debugger":
-		a.args = []string{"--prompt"}
+	case "kilo", "kilocode":
+		a.args = []string{"run"}
+	case "vibe":
+		a.args = []string{"--auto-approve", "-p"}
+	case "agy", "researcher", "debugger":
+		a.args = []string{"--print"}
 	case "hermes":
-		// Nous Research Hermes agent - deep tool-use, reasoning and autonomous workflows
 		if a.binary == "" {
 			a.binary = "hermes"
 		}
-		a.args = []string{"--prompt"}
-	case "deepseek":
-		// TODO: confirm headless flags for DeepSeek CLI client
-		a.args = []string{"--prompt"}
-	case "harness":
-		// TODO: confirm headless flags for Harness AI coding assistant CLI
-		a.args = []string{"--message"}
-	case "kimocode":
-		// TODO: confirm headless flags for Kimo Code CLI
-		a.args = []string{"--prompt"}
+		a.args = []string{"--cli", "-z"}
 	case "pi":
-		// TODO: confirm headless flags for Pi.ai (Inflection AI) CLI
-		a.args = []string{"--prompt"}
+		a.args = []string{"--print"}
+	case "kimi", "kimocode":
+		a.args = []string{"-p"}
+	case "jules":
+		a.args = []string{"new"}
+	case "grok", "agent":
+		a.args = []string{"-p"}
+	case "cursor":
+		a.args = []string{"--headless"}
+	case "deepseek", "dsh":
+		a.args = []string{"web"}
+	case "harness":
+		a.args = []string{"--message"}
 	}
 	return a
 }
