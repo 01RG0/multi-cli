@@ -116,7 +116,7 @@ cooldown_seconds: 60
 
 # Proxy server (set port > 0 to enable; then set ANTHROPIC_BASE_URL=http://localhost:8080)
 proxy_port: 8080
-proxy_log: false
+proxy_log: true
 
 # SQLite database path
 db_path: orchestrator.db
