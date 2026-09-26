@@ -217,8 +217,8 @@ cli_agents:
 
   # ── Pending / future install ──────────────────────────────────────────────────
   - name: grok
-    command: grok
-    description: "xAI Grok CLI — install pending"
+    command: /home/rootuser/.grok/bin/grok
+    description: "xAI Grok 1.0.41 — grok -p (OIDC auth from ~/.grok/auth.json)"
 
   - name: cursor
     command: cursor
