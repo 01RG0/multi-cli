@@ -206,6 +206,7 @@ func (s *Server) Handler() http.Handler {
 
 		// MCP
 		mux.HandleFunc("/api/mcp/servers", s.handleMCPServers)
+		mux.HandleFunc("/api/stats/tables", s.handleTableStats)
 		mux.HandleFunc("/api/mcp/servers/{name}/tools", s.handleMCPServerTools)
 		mux.HandleFunc("/api/mcp/call", s.handleMCPCall)
 	}

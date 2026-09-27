@@ -153,6 +153,17 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   // ── Memory graph state ──
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [queryLabel, setQueryLabel] = useState<{ text: string; x: number; y: number } | null>(null);
+  // Real table row counts: tasks → tasks table, kg → memory_nodes, tools → skills
+  const [tableStats, setTableStats] = useState<Record<string, number>>({});
+  useEffect(() => {
+    fetch('http://localhost:8080/api/stats/tables')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { tasks?: number; memory_nodes?: number; skills?: number } | null) => {
+        if (!d) return;
+        setTableStats({ tasks: d.tasks ?? 0, kg: d.memory_nodes ?? 0, tools: d.skills ?? 0 });
+      })
+      .catch(() => {});
+  }, []);
 
 
   // Auto-scroll terminal to bottom
@@ -535,6 +546,20 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
                       >
                         {n.label}
                       </text>
+
+                      {/* Row count badge — only for nodes with a real DB table */}
+                      {tableStats[n.id] !== undefined && (
+                        <text
+                          x={n.x}
+                          y={n.y + n.r + 19}
+                          fill={isAct ? '#a1a1aa' : '#3f3f46'}
+                          fontSize="6.5"
+                          textAnchor="middle"
+                          fontFamily="monospace"
+                        >
+                          {tableStats[n.id].toLocaleString()} rows
+                        </text>
+                      )}
 
                     </g>
                   );

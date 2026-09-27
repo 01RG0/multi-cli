@@ -988,3 +988,28 @@ func (s *Server) handleProviderHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"providers": providers})
 }
+
+// handleTableStats returns row counts for real SQLite tables used in the
+// mini memory graph visualization in the dashboard.
+// GET /api/stats/tables → {"tasks":N,"memory_nodes":N,"skills":N}
+func (s *Server) handleTableStats(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "GET") {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	counts := map[string]int64{"tasks": 0, "memory_nodes": 0, "skills": 0}
+	if s.db != nil {
+		for table := range counts {
+			var n int64
+			row := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM "+table)
+			if err := row.Scan(&n); err == nil {
+				counts[table] = n
+			}
+		}
+	}
+	json.NewEncoder(w).Encode(counts)
+}
