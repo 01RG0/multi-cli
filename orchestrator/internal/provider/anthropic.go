@@ -47,7 +47,7 @@ type anthropicRequest struct {
 
 type anthropicMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"` // string or []block for tool_use conversations
 }
 
 type anthropicTool struct {
@@ -94,9 +94,16 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ChatRequest) (Chat
 	for _, m := range req.Messages {
 		if m.Role == "system" {
 			body.System = m.Content
-		} else {
-			body.Messages = append(body.Messages, anthropicMessage{Role: m.Role, Content: m.Content})
+			continue
 		}
+		var content any = m.Content
+		if len(m.ContentRaw) > 0 {
+			var rich any
+			if json.Unmarshal(m.ContentRaw, &rich) == nil {
+				content = rich
+			}
+		}
+		body.Messages = append(body.Messages, anthropicMessage{Role: m.Role, Content: content})
 	}
 	for _, t := range req.Tools {
 		body.Tools = append(body.Tools, anthropicTool{

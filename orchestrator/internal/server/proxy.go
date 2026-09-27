@@ -35,6 +35,13 @@ type proxyMessage struct {
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// tool_use fields (outbound to client)
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
+	// tool_result fields (inbound from client in message history)
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Result    string `json:"content,omitempty"` // json tag "content" matches Anthropic spec
 }
 
 // proxyResponse mirrors the Anthropic /v1/messages response body.
@@ -146,7 +153,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		Role:       "assistant",
 		Model:      req.Model,
 		StopReason: mapStopReason(resp.FinishReason),
-		Content:    []contentBlock{{Type: "text", Text: resp.Content}},
+		Content:    buildRichContent(resp),
 		Usage: proxyUsage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
@@ -232,6 +239,31 @@ func writeSSE(w http.ResponseWriter, f http.Flusher, v any) {
 	f.Flush()
 }
 
+// buildRichContent constructs the Anthropic-format content block array from a provider response.
+// It includes tool_use blocks when present so the client can run its tool-use loop.
+func buildRichContent(resp provider.ChatResponse) []contentBlock {
+	var blocks []contentBlock
+	if resp.Content != "" {
+		blocks = append(blocks, contentBlock{Type: "text", Text: resp.Content})
+	}
+	for _, tc := range resp.ToolCalls {
+		input := tc.Arguments
+		if len(input) == 0 {
+			input = json.RawMessage("{}")
+		}
+		blocks = append(blocks, contentBlock{
+			Type:  "tool_use",
+			ID:    tc.ID,
+			Name:  tc.Name,
+			Input: input,
+		})
+	}
+	if len(blocks) == 0 {
+		blocks = []contentBlock{{Type: "text", Text: ""}}
+	}
+	return blocks
+}
+
 func toChatRequest(req proxyRequest) provider.ChatRequest {
 	cr := provider.ChatRequest{
 		MaxTokens:   req.MaxTokens,
@@ -242,8 +274,14 @@ func toChatRequest(req proxyRequest) provider.ChatRequest {
 		cr.Messages = append(cr.Messages, provider.Message{Role: "system", Content: sys})
 	}
 	for _, m := range req.Messages {
-		content := extractText(m.Content)
-		cr.Messages = append(cr.Messages, provider.Message{Role: m.Role, Content: content})
+		msg := provider.Message{Role: m.Role, Content: extractText(m.Content)}
+		// Preserve rich (non-string) content so the Anthropic provider can relay tool_use history.
+		if _, isStr := m.Content.(string); !isStr && m.Content != nil {
+			if raw, err := json.Marshal(m.Content); err == nil {
+				msg.ContentRaw = raw
+			}
+		}
+		cr.Messages = append(cr.Messages, msg)
 	}
 	return cr
 }
@@ -453,7 +491,7 @@ func (s *Server) proxyWithRouter(w http.ResponseWriter, r *http.Request, rtr *pr
 		Role:       "assistant",
 		Model:      req.Model,
 		StopReason: mapStopReason(resp.FinishReason),
-		Content:    []contentBlock{{Type: "text", Text: resp.Content}},
+		Content:    buildRichContent(resp),
 		Usage: proxyUsage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,

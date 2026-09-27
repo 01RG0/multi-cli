@@ -6,8 +6,9 @@ import (
 )
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string          `json:"role"`
+	Content    string          `json:"content"`
+	ContentRaw json.RawMessage `json:"-"` // rich content blocks (Anthropic array format); not serialized
 }
 
 type Tool struct {

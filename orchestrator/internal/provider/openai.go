@@ -84,6 +84,57 @@ type openAIResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// toOpenAIMessages converts provider.Message slice to OpenAI format, translating
+// Anthropic-style rich content blocks (tool_use / tool_result) when ContentRaw is set.
+func toOpenAIMessages(msgs []Message) []openAIMessage {
+	var result []openAIMessage
+	for _, m := range msgs {
+		if len(m.ContentRaw) == 0 {
+			result = append(result, openAIMessage{Role: m.Role, Content: m.Content})
+			continue
+		}
+		var blocks []map[string]any
+		if err := json.Unmarshal(m.ContentRaw, &blocks); err != nil {
+			result = append(result, openAIMessage{Role: m.Role, Content: m.Content})
+			continue
+		}
+		var toolCalls []openAIToolCall
+		var textContent string
+		toolResultAdded := false
+		for _, b := range blocks {
+			switch b["type"] {
+			case "tool_use":
+				id, _ := b["id"].(string)
+				name, _ := b["name"].(string)
+				inputRaw, _ := json.Marshal(b["input"])
+				toolCalls = append(toolCalls, openAIToolCall{
+					ID:   id,
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: name, Arguments: string(inputRaw)},
+				})
+			case "text":
+				if t, ok := b["text"].(string); ok {
+					textContent += t
+				}
+			case "tool_result":
+				toolUseID, _ := b["tool_use_id"].(string)
+				content, _ := b["content"].(string)
+				result = append(result, openAIMessage{Role: "tool", Content: content, ToolCallID: toolUseID})
+				toolResultAdded = true
+			}
+		}
+		if len(toolCalls) > 0 {
+			result = append(result, openAIMessage{Role: m.Role, Content: textContent, ToolCalls: toolCalls})
+		} else if !toolResultAdded {
+			result = append(result, openAIMessage{Role: m.Role, Content: textContent})
+		}
+	}
+	return result
+}
+
 func (p *OpenAIProvider) Complete(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	model := req.Model
 	if model == "" {
@@ -92,12 +143,9 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ChatRequest) (ChatRes
 
 	body := openAIRequest{
 		Model:       model,
-		Messages:    make([]openAIMessage, len(req.Messages)),
+		Messages:    toOpenAIMessages(req.Messages),
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
-	}
-	for i, m := range req.Messages {
-		body.Messages[i] = openAIMessage{Role: m.Role, Content: m.Content}
 	}
 	for _, t := range req.Tools {
 		body.Tools = append(body.Tools, openAITool{
@@ -171,13 +219,10 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 	}
 	body := openAIRequest{
 		Model:       model,
-		Messages:    make([]openAIMessage, len(req.Messages)),
+		Messages:    toOpenAIMessages(req.Messages),
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
 		Stream:      true,
-	}
-	for i, m := range req.Messages {
-		body.Messages[i] = openAIMessage{Role: m.Role, Content: m.Content}
 	}
 
 	data, _ := json.Marshal(body)
