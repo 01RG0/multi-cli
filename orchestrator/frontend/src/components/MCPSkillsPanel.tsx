@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Puzzle, Server, Zap, Plus, Trash2, Play, ChevronDown, ChevronRight, X, Clock, RefreshCw } from 'lucide-react';
 
-const BASE = 'http://localhost:8080';
+const BASE = '';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

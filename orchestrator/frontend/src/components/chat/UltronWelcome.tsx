@@ -46,7 +46,7 @@ export function UltronWelcome({ onSelectPrompt }: UltronWelcomeProps) {
   const [mcpCount, setMcpCount]     = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/agents/status')
+    fetch('/api/agents/status')
       .then((r) => r.json())
       .then((data: unknown) => {
         if (Array.isArray(data)) setAgentCount(data.length);
@@ -57,7 +57,7 @@ export function UltronWelcome({ onSelectPrompt }: UltronWelcomeProps) {
       })
       .catch(() => setAgentCount(16));
 
-    fetch('http://localhost:8080/api/mcp/servers')
+    fetch('/api/mcp/servers')
       .then((r) => r.json())
       .then((data: unknown) => {
         if (Array.isArray(data)) setMcpCount(data.length);

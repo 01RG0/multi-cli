@@ -51,7 +51,7 @@ function SortableProviderItem({ id }: SortableProviderItemProps) {
     setTestedLatency(null);
     const start = Date.now();
     try {
-      const res = await fetch('http://localhost:8080/health', { signal: AbortSignal.timeout(5000) });
+      const res = await fetch('/health', { signal: AbortSignal.timeout(5000) });
       const elapsed = Date.now() - start;
       if (res.ok) {
         setTestedLatency(elapsed);
@@ -156,7 +156,7 @@ export default function ProviderChain() {
   const [newUrl, setNewUrl] = useState('');
 
   React.useEffect(() => {
-    fetch('http://localhost:8080/health')
+    fetch('/health')
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (!data || !Array.isArray(data.chain)) return;

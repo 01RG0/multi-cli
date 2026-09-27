@@ -79,12 +79,12 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({
     };
   }, []);
 
-  // Hydrate with GET http://localhost:8080/api/logs?task_id=...&limit=200 on task selection or mount
+  // Hydrate with GET /api/logs?task_id=...&limit=200 on task selection or mount
   useEffect(() => {
     const queryParam = selectedLogTaskId
       ? `?task_id=${encodeURIComponent(selectedLogTaskId)}&limit=200`
       : `?limit=200`;
-    const url = `http://localhost:8080/api/logs${queryParam}`;
+    const url = `/api/logs${queryParam}`;
 
     fetch(url)
       .then((res) => {

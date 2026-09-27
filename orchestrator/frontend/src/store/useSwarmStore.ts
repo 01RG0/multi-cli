@@ -997,9 +997,15 @@ class SwarmSimulator {
   }
 }
 
+function deriveWsUrl(): string {
+  if (typeof window === 'undefined') return 'ws://localhost:8080/ws';
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${window.location.host}/ws`;
+}
+
 class SwarmWebSocketEngine {
   private ws: WebSocket | null = null;
-  private url: string = 'ws://localhost:8080/ws';
+  private url: string = deriveWsUrl();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay: number = 3000;
   private isExplicitlyClosed: boolean = false;
@@ -1017,7 +1023,7 @@ class SwarmWebSocketEngine {
     this.setStoreStatus = setStoreStatus;
   }
 
-  public connect(url: string = 'ws://localhost:8080/ws'): void {
+  public connect(url: string = deriveWsUrl()): void {
     this.url = url;
     this.isExplicitlyClosed = false;
 
@@ -1381,7 +1387,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
   // Automatically kick off initial live simulation and WS connection attempt
   if (typeof window !== 'undefined') {
     simulator.start();
-    wsEngine.connect('ws://localhost:8080/ws');
+    wsEngine.connect(deriveWsUrl());
   }
 
   return {
@@ -1478,7 +1484,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       set((state) => ({ tasks: [fullTask, ...state.tasks] }));
 
       // Persist task to backend queue
-      fetch('http://localhost:8080/api/tasks/enqueue', {
+      fetch('/api/tasks/enqueue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1521,7 +1527,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       });
 
       try {
-        const res = await fetch(`http://localhost:8080/api/tasks/${encodeURIComponent(id)}/cancel`, {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/cancel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -1546,7 +1552,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
       });
 
       try {
-        const res = await fetch(`http://localhost:8080/api/tasks/${encodeURIComponent(id)}/retry`, {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(id)}/retry`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -1623,7 +1629,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
 
     fetchAgents: async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/agents/status');
+        const res = await fetch('/api/agents/status');
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data.agents;
@@ -1683,7 +1689,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
         try { localStorage.setItem('ultron_routingRules', JSON.stringify(next)); } catch {}
 
         // Persist to backend routing rules API
-        fetch('http://localhost:8080/api/routing/rules', {
+        fetch('/api/routing/rules', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1716,7 +1722,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
         try { localStorage.setItem('ultron_routingRules', JSON.stringify(next)); } catch {}
 
         // Delete from backend routing rules API
-        fetch(`http://localhost:8080/api/routing/rules/${encodeURIComponent(id)}`, {
+        fetch(`/api/routing/rules/${encodeURIComponent(id)}`, {
           method: 'DELETE',
         }).catch(() => {});
 
@@ -1730,7 +1736,7 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
 
     fetchRoutingRules: async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/routing/rules');
+        const res = await fetch('/api/routing/rules');
         if (res.ok) {
           const rules = await res.json();
           if (Array.isArray(rules) && rules.length > 0) {
@@ -1764,8 +1770,8 @@ export const useSwarmStore = create<SwarmStore>((set, get) => {
     fetchLogs: async (taskId?: string) => {
       try {
         const url = taskId
-          ? `http://localhost:8080/api/logs?task_id=${encodeURIComponent(taskId)}&limit=100`
-          : 'http://localhost:8080/api/logs?limit=100';
+          ? `/api/logs?task_id=${encodeURIComponent(taskId)}&limit=100`
+          : '/api/logs?limit=100';
         const res = await fetch(url);
         if (res.ok) {
           const entries = await res.json();

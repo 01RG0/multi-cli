@@ -37,7 +37,7 @@ export function resolveMediaUrl(url: string): string {
   ) {
     return url;
   }
-  return `http://localhost:8080${url.startsWith('/') ? '' : '/'}${url}`;
+  return `${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
 // ─── Audio Player with Waveform Aesthetics ───────────────────────────────────

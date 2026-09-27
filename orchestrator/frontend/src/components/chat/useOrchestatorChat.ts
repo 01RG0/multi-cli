@@ -2,7 +2,7 @@
  * useOrchestatorChat — Ultron's agentic chat hook.
  *
  * Manages conversation state, runs the full Anthropic tool-use loop via the
- * local proxy at http://localhost:8080/v1/messages, and surfaces WS task
+ * local proxy at /v1/messages, and surfaces WS task
  * events from the shared Zustand store as inline task cards.
  */
 
@@ -348,7 +348,7 @@ const ULTRON_TOOLS = [
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
 
-const BASE = 'http://localhost:8080';
+const BASE = '';
 
 async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
   try {

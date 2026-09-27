@@ -51,9 +51,7 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
     const res = await fetch(endpoint, options);
     if (res.ok) return (await res.json()) as T;
   } catch {}
-  const fallbackUrl = endpoint.startsWith('http')
-    ? endpoint
-    : `http://localhost:8080${endpoint}`;
+  const fallbackUrl = endpoint;
   const res = await fetch(fallbackUrl, options);
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   return (await res.json()) as T;

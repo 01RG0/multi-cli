@@ -156,7 +156,7 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   // Real table row counts: tasks → tasks table, kg → memory_nodes, tools → skills
   const [tableStats, setTableStats] = useState<Record<string, number>>({});
   useEffect(() => {
-    fetch('http://localhost:8080/api/stats/tables')
+    fetch('/api/stats/tables')
       .then(r => r.ok ? r.json() : null)
       .then((d: { tasks?: number; memory_nodes?: number; skills?: number } | null) => {
         if (!d) return;
