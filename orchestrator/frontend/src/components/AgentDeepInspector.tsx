@@ -11,14 +11,8 @@ const PT = 10; // pad top
 const PR = 8;  // pad right
 const PB = 22; // pad bottom
 
-function genNext(prev: number): number {
-  return Math.max(12, Math.min(98, prev + (Math.random() - 0.46) * 11));
-}
-
-function initPerfData(n = 60): number[] {
-  const d: number[] = [55 + Math.random() * 20];
-  for (let i = 1; i < n; i++) d.push(genNext(d[i - 1]));
-  return d;
+function clampLatency(v: number): number {
+  return Math.max(12, Math.min(998, v));
 }
 
 function toPoints(data: number[]): Array<[number, number]> {
@@ -97,6 +91,8 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   const setSelectedAgentId = (useSwarmStore as any)((s: any) => s.setSelectedAgentId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fetchLogs          = (useSwarmStore as any)((s: any) => s.fetchLogs);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const logsByTask         = (useSwarmStore as any)((s: any) => s.logsByTask) as Record<string, Array<{agentId: string; stream: string; line: string; ts: number}>>;
 
   const resolvedId = storeSelectedId || agentId;
   const rawAgent = agents?.find((a: any) => a.id === resolvedId);
@@ -109,6 +105,9 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   const completedTasks = useMemo(() => agentTasks.filter((t: any) => t.status === 'completed'), [agentTasks]);
   const failedTasks = useMemo(() => agentTasks.filter((t: any) => t.status === 'failed'), [agentTasks]);
   const runningTask = useMemo(() => agentTasks.find((t: any) => t.status === 'running'), [agentTasks]);
+
+  const currentTaskId = runningTask?.id ?? rawAgent?.currentTaskId ?? null;
+  const taskLogs = currentTaskId ? (logsByTask?.[String(currentTaskId)] ?? []) : [];
 
   const tasksCompletedCount = completedTasks.length > 0 ? completedTasks.length : (rawAgent?.tasksCompleted || 0);
   const totalFinished = completedTasks.length + failedTasks.length;
@@ -141,15 +140,14 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   }, [fetchLogs]);
 
   // ── Live terminal state ──
-  const [termLines, setTermLines] = useState<{ id: number; text: string; type: 'cmd' | 'out' | 'log' | 'err' }[]>([]);
   const termRef = useRef<HTMLDivElement>(null);
-  const termCounter = useRef(0);
 
   const [isExpanded, setIsExpanded] = useState(!isEmbedded);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ── Performance chart state ──
-  const [perfData, setPerfData] = useState<number[]>(initPerfData);
+  const perfHistory = useRef<number[]>([]);
+  const [perfData, setPerfData] = useState<number[]>(() => Array(60).fill(100));
   const [perfFlash, setPerfFlash] = useState(false);
 
   // ── Memory graph state ──
@@ -159,100 +157,11 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [queryLabel, setQueryLabel] = useState<{ text: string; x: number; y: number } | null>(null);
 
-  // Agent-specific terminal line pools
-  const TERM_POOLS: Record<string, { cmd: string; out: string[] }[]> = {
-    codex:      [
-      { cmd: 'codex run --task generate-tests', out: ['Parsing AST...', 'Generated 12 test cases', 'Coverage: 94.2%'] },
-      { cmd: 'codex explain src/auth.ts', out: ['Reading file...', 'JWT middleware detected', 'Token expiry: 3600s'] },
-      { cmd: 'codex refactor --pattern hooks', out: ['Scanning hooks...', 'Refactoring 7 files', 'Done ✓'] },
-    ],
-    agy:        [
-      { cmd: 'agy search "deepmind gradient descent"', out: ['Querying knowledge base...', 'Found 38 relevant papers', 'Summarising...'] },
-      { cmd: 'agy reason --chain-of-thought', out: ['Step 1: Decompose problem', 'Step 2: Evaluate paths', 'Confidence: 0.91'] },
-    ],
-    grok:       [
-      { cmd: 'grok --query "latest ML papers"', out: ['Searching xAI index...', 'Retrieved 22 results', 'Top: Mixture of Experts v3'] },
-      { cmd: 'grok explain --code diff.patch', out: ['Analysing patch...', 'Semantic diff ready', 'No regressions found'] },
-    ],
-    kilo:       [
-      { cmd: 'kilo lint --strict', out: ['Scanning 143 files...', '3 warnings, 0 errors', 'ESLint rules: 58 active'] },
-      { cmd: 'kilo typecheck', out: ['Running tsc --noEmit', 'No errors found ✓', 'Build target: ES2022'] },
-    ],
-    cline:      [
-      { cmd: 'cline plan "add auth middleware"', out: ['Planning steps...', 'Step 1: Read existing routes', 'Step 2: Write middleware', 'Step 3: Register routes'] },
-      { cmd: 'cline exec --autonomous', out: ['Executing plan...', 'Modified 3 files', 'Running tests...', 'All passing ✓'] },
-    ],
-    vibe:       [
-      { cmd: 'vibe generate --model mistral-7b', out: ['Loading model weights...', 'Temperature: 0.7', 'Generating tokens...', '512 tokens/sec'] },
-      { cmd: 'vibe finetune --dataset ./data', out: ['Loading 4.2k samples', 'Epoch 1/3: loss 0.43', 'Epoch 2/3: loss 0.31'] },
-    ],
-    cursor:     [
-      { cmd: 'cursor --edit src/App.tsx', out: ['Opening in editor...', 'AI suggestions ready', 'Apply? [y/n]'] },
-      { cmd: 'cursor chat "fix this bug"', out: ['Analysing context...', 'Root cause: null pointer', 'Patch generated'] },
-    ],
-    opencode:   [
-      { cmd: 'opencode run --task refactor', out: ['Reading codebase...', 'Identifying patterns', 'Rewriting 4 modules'] },
-      { cmd: 'opencode diff --staged', out: ['+147 -83 lines changed', 'Review ready', 'Linting passed ✓'] },
-    ],
-    researcher: [
-      { cmd: 'researcher fetch --topic "RAG pipelines"', out: ['Fetching from 12 sources...', 'Summarising...', 'Vector stored ✓'] },
-      { cmd: 'researcher compare --models gpt-4,claude-3', out: ['Running evals...', 'GPT-4: 87.3%', 'Claude-3: 91.1%'] },
-    ],
-    jules:      [
-      { cmd: 'jules assign --task "fix login bug"', out: ['Cloning repo...', 'Creating branch fix/login-bug', 'Analysing error traces', 'Writing patch...'] },
-      { cmd: 'jules pr --auto-review', out: ['Running tests...', '42/42 passed', 'PR ready for review', 'Link: github.com/pr/881'] },
-    ],
-    debugger:   [
-      { cmd: 'debugger trace --pid 4821', out: ['Attaching to process...', 'Breakpoint hit: auth.ts:44', 'Stack unwound'] },
-      { cmd: 'debugger heap --snapshot', out: ['Capturing heap...', '142 MB allocated', 'No leaks detected'] },
-    ],
-  };
-
-  // Seed terminal on agent change, then tick new lines every ~2s
-  useEffect(() => {
-    setTermLines([]);
-    termCounter.current = 0;
-    const pool = TERM_POOLS[resolvedId] || TERM_POOLS['opencode'];
-    let step = 0;
-    let lineIdx = 0;
-    let cmdIdx = Math.floor(Math.random() * pool.length);
-
-    const tick = () => {
-      const entry = pool[cmdIdx];
-      if (step === 0) {
-        // emit command line
-        setTermLines(prev => {
-          const id = termCounter.current++;
-          const next = [...prev, { id, text: `$ ${entry.cmd}`, type: 'cmd' as const }];
-          return next.slice(-40); // keep last 40 lines
-        });
-        step = 1;
-      } else if (lineIdx < entry.out.length) {
-        const txt = entry.out[lineIdx++];
-        setTermLines(prev => {
-          const id = termCounter.current++;
-          const next = [...prev, { id, text: txt, type: (txt.startsWith('!') ? 'err' : 'out') as 'err' | 'out' }];
-          return next.slice(-40);
-        });
-      } else {
-        // done with this cmd — pick next
-        step = 0;
-        lineIdx = 0;
-        cmdIdx = (cmdIdx + 1) % pool.length;
-      }
-    };
-
-    // Initial burst
-    tick(); tick(); tick();
-    const t = setInterval(tick, 1800);
-    return () => clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedId]);
 
   // Auto-scroll terminal to bottom
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
-  }, [termLines]);
+  }, [taskLogs.length]);
 
   // Click outside to dismiss drawer
   useEffect(() => {
@@ -267,18 +176,20 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isExpanded, isEmbedded, onClose]);
 
-  // Live performance data ticker (every 950ms)
+  // Real latency history — appends agent.avgLatencyMs when it changes
   useEffect(() => {
-    const t = setInterval(() => {
-      setPerfData(prev => {
-        const next = genNext(prev[prev.length - 1]);
-        return [...prev.slice(1), next];
-      });
-      setPerfFlash(true);
-      setTimeout(() => setPerfFlash(false), 120);
-    }, 950);
-    return () => clearInterval(t);
-  }, []);
+    const v = clampLatency(avgLatency);
+    if (perfHistory.current.length === 0) {
+      perfHistory.current = Array(60).fill(v);
+    } else {
+      perfHistory.current = [...perfHistory.current.slice(1), v];
+    }
+    setPerfData([...perfHistory.current]);
+    setPerfFlash(true);
+    const t = setTimeout(() => setPerfFlash(false), 120);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avgLatency]);
 
   // Node activation ticker (every 1.7s)
   useEffect(() => {
@@ -291,10 +202,6 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
         x: node.x,
         y: node.y - node.r - 10,
       });
-      setNodeRows(prev => ({
-        ...prev,
-        [node.id]: prev[node.id] + Math.floor(Math.random() * 4),
-      }));
       setTimeout(() => { setActiveNode(null); setQueryLabel(null); }, 700);
     }, 1700);
     return () => clearInterval(t);
@@ -400,18 +307,16 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
                 <span className="text-zinc-400 font-medium tracking-wider">TERMINAL</span>
               </div>
               <div ref={termRef} className="p-4 overflow-y-auto text-zinc-300 space-y-0.5" style={{ maxHeight: '260px' }}>
-                {termLines.map(line => (
-                  <div key={line.id} className={
-                    line.type === 'cmd' ? 'text-emerald-400 font-bold' :
-                    line.type === 'err' ? 'text-red-400' :
-                    'text-zinc-400'
-                  }>
-                    {line.type === 'cmd'
-                      ? <><span className="text-blue-400">~/{agent.name}</span> {line.text}</>
-                      : <><span className="text-zinc-600 mr-2">›</span>{line.text}</>
-                    }
-                  </div>
-                ))}
+                {taskLogs.length === 0 ? (
+                  <span className="text-zinc-600 text-[11px]">No active task output. Waiting for agent to start a task…</span>
+                ) : (
+                  taskLogs.map((ll, i) => (
+                    <div key={i} className="leading-5">
+                      <span className="text-zinc-600 mr-2 select-none">{new Date(ll.ts).toISOString().slice(11, 19)}</span>
+                      <span className={ll.stream === 'stderr' ? 'text-rose-400' : 'text-zinc-300'}>{ll.line}</span>
+                    </div>
+                  ))
+                )}
                 <div className="flex items-center gap-1 mt-1">
                   <span className="text-blue-400">~/{agent.name}</span>
                   <span className="text-emerald-400">$</span>

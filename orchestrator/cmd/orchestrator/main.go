@@ -261,6 +261,33 @@ func main() {
 			wp := queue.NewWorkerPool(concurrency, q, handler)
 			go wp.Start(ctx)
 			go loop.Start(ctx)
+
+			startTime := time.Now()
+			go func() {
+				ticker := time.NewTicker(10 * time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						stats, err := q.Stats(context.Background())
+						if err != nil {
+							continue
+						}
+						srv.Hub.Broadcast(map[string]any{
+							"type": "stats",
+							"stats": map[string]any{
+								"runningCount": stats[string(queue.StatusRunning)],
+								"pendingCount":  stats[string(queue.StatusPending)],
+								"tasksToday":    stats[string(queue.StatusCompleted)] + stats[string(queue.StatusFailed)],
+								"agentsCount":   len(agents),
+								"uptime":        time.Since(startTime).Round(time.Second).String(),
+							},
+						})
+					}
+				}
+			}()
 			log.Printf("workers: %d goroutines draining queue (db=%s)", concurrency, cfg.DBPath)
 		}
 
