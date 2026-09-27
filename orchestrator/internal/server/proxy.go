@@ -152,7 +152,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		Type:       "message",
 		Role:       "assistant",
 		Model:      req.Model,
-		StopReason: mapStopReason(resp.FinishReason),
+		StopReason: mapStopReason(resp.FinishReason, len(resp.ToolCalls) > 0),
 		Content:    buildRichContent(resp),
 		Usage: proxyUsage{
 			InputTokens:  resp.Usage.InputTokens,
@@ -304,11 +304,14 @@ func extractText(content any) string {
 	return fmt.Sprintf("%v", content)
 }
 
-func mapStopReason(reason string) string {
+func mapStopReason(reason string, hasToolCalls bool) string {
+	if hasToolCalls {
+		return "tool_use"
+	}
 	switch reason {
 	case "stop":
 		return "end_turn"
-	case "tool_use":
+	case "tool_use", "tool_calls": // "tool_calls" is OpenAI-compat finish_reason
 		return "tool_use"
 	case "length":
 		return "max_tokens"
@@ -490,7 +493,7 @@ func (s *Server) proxyWithRouter(w http.ResponseWriter, r *http.Request, rtr *pr
 		Type:       "message",
 		Role:       "assistant",
 		Model:      req.Model,
-		StopReason: mapStopReason(resp.FinishReason),
+		StopReason: mapStopReason(resp.FinishReason, len(resp.ToolCalls) > 0),
 		Content:    buildRichContent(resp),
 		Usage: proxyUsage{
 			InputTokens:  resp.Usage.InputTokens,
