@@ -1,0 +1,27 @@
+id: failure-mode-learning
+name: "Failure-Mode Lesson Recording and Recall"
+description: >
+  Verifies that Ultron records a lesson from a reported failure (via
+  upsert_memory with type=lesson) and retrieves it in a future session
+  when asked about past deployment failures.
+sessions:
+  - id: s1
+    turns:
+      - user: "I just tried to deploy using the fast-deploy skill and it failed because there was no rollback plan. Please record this as a lesson so you never make the same mistake."
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+  - id: s2
+    turns:
+      - user: "I'm about to do a deployment. Are there any lessons from past failures I should know about first?"
+        assert:
+          tools_called:
+            - "search_memory"
+          response_contains:
+            - "rollback"
+
+post_checks:
+  - type: search_memory
+    query: "deployment failure lesson rollback"
+    expect_label_contains: "deploy"

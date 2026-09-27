@@ -1,0 +1,26 @@
+id: contradiction-handling
+name: "Contradiction Handling — Preference Update"
+description: >
+  Verifies that when the user contradicts a previously stored preference,
+  Ultron calls upsert_memory to update (not duplicate) the stored value.
+  UpsertNode in graph.go deduplicates by exact label+type, so the updated
+  value should replace the old one.
+sessions:
+  - id: s1
+    turns:
+      - user: "Remember: my preferred deployment target is Docker containers."
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+  - id: s2
+    turns:
+      - user: "Actually I changed my mind — my preferred deployment target is Kubernetes from now on. Please update your memory."
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+post_checks:
+  - type: search_memory
+    query: "preferred deployment target"
+    expect_label_contains: "Kubernetes"

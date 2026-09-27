@@ -1,0 +1,17 @@
+id: concurrent-dispatch
+name: "Concurrent Pipeline Dispatch and Queue Check"
+description: >
+  Dispatches a two-step pipeline (researcher → kilo) and then queries the
+  queue status. Validates that dispatch_pipeline creates tasks visible via
+  get_queue_status, confirming end-to-end task tracking.
+sessions:
+  - id: s1
+    turns:
+      - user: "Run a pipeline: step 1 — the researcher agent should summarize what SQLite WAL mode is; step 2 — the kilo agent should write a one-liner Go snippet that opens a SQLite DB in WAL mode."
+        assert:
+          tools_called:
+            - "dispatch_pipeline"
+      - user: "Check the queue status and tell me how many tasks are pending or running right now."
+        assert:
+          tools_called:
+            - "get_queue_status"

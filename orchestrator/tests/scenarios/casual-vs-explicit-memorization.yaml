@@ -1,0 +1,22 @@
+id: casual-vs-explicit-memorization
+name: "Casual vs. Explicit Memorization"
+description: >
+  Tests that an explicit 'remember this forever' instruction reliably triggers
+  upsert_memory or update_core_memory, and that the stored fact survives to a
+  new session. A casual mention without 'remember' may or may not be stored —
+  this scenario only asserts on the explicitly requested fact.
+sessions:
+  - id: s1
+    turns:
+      - user: "I use port 3000 for my local dev server."
+      - user: "Remember this forever: I always run tests before any deployment."
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+  - id: s2
+    turns:
+      - user: "What do I always do before deploying?"
+        assert:
+          response_contains:
+            - "test"

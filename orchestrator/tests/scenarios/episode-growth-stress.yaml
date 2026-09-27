@@ -1,0 +1,22 @@
+id: episode-growth-stress
+name: "Episode Growth via Task Dispatch"
+description: >
+  Dispatches multiple tasks to the kilo agent and then checks that at least
+  one episode exists in the episode log. AppendEpisode is written by the
+  worker when tasks complete, so this validates the full pipeline:
+  dispatch → worker execution → episode record.
+sessions:
+  - id: s1
+    turns:
+      - user: "Dispatch 3 separate tasks to the kilo agent: task 1 is 'print hello world in Go', task 2 is 'print hello world in Python', task 3 is 'print hello world in JavaScript'. Dispatch them all now."
+        assert:
+          tools_called:
+            - "dispatch_task"
+      - user: "List the recent episodes from memory so I can see what was recorded."
+        assert:
+          tools_called:
+            - "list_episodes"
+
+post_checks:
+  - type: episode_count_gte
+    n: 1

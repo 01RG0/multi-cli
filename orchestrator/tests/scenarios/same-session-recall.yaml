@@ -1,0 +1,16 @@
+id: same-session-recall
+name: "Same-Session Fact Recall"
+description: >
+  Verifies that Ultron recalls facts stated earlier in the same conversation
+  using only its context window — no memory tool calls required.
+sessions:
+  - id: s1
+    turns:
+      - user: "My name is Ahmed and I'm building a multi-CLI orchestration platform that coordinates 16 specialized AI agents."
+      - user: "What's my name and what kind of system am I building?"
+        assert:
+          response_contains:
+            - "Ahmed"
+          tools_not_called:
+            - "search_memory"
+            - "get_core_memory"

@@ -1,0 +1,28 @@
+id: retrieval-relevance-check
+name: "Semantic Retrieval Relevance"
+description: >
+  Stores three technology facts in session 1, then queries them in session 2
+  using paraphrased questions. Tests that the hybrid BM25+cosine search
+  returns relevant nodes even when the query wording differs from the stored label.
+sessions:
+  - id: s1
+    turns:
+      - user: "Remember three things: 1) The codebase uses Go for the backend. 2) React with TypeScript for the UI. 3) SQLite for the database."
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+  - id: s2
+    turns:
+      - user: "What server-side language is this project using?"
+        assert:
+          response_contains:
+            - "Go"
+      - user: "Which database engine stores persistent data in this system?"
+        assert:
+          response_contains:
+            - "SQLite"
+      - user: "What JavaScript framework powers the frontend?"
+        assert:
+          response_contains:
+            - "React"

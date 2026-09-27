@@ -1,0 +1,25 @@
+id: core-vs-graph-boundary
+name: "Core Memory vs. Graph Node Boundary"
+description: >
+  Verifies that Ultron uses update_core_memory for identity-level facts
+  (production server, platform name) and upsert_memory for discrete
+  factual nodes (staging server IP). These map to different storage paths:
+  /api/memory/core vs /api/memory/upsert.
+sessions:
+  - id: s1
+    turns:
+      - user: "Update your core memory to include this: You manage the 01RG0 multi-CLI platform. The production server is at 51.12.208.62."
+        assert:
+          tools_called:
+            - "update_core_memory"
+      - user: "Now add a separate memory node for this fact: the staging server is at 10.0.0.5"
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+post_checks:
+  - type: core_memory_contains
+    substring: "51.12.208.62"
+  - type: search_memory
+    query: "staging server IP address"
+    expect_label_contains: "staging"

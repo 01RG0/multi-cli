@@ -1,0 +1,26 @@
+id: cross-session-recall
+name: "Cross-Session Memory Recall"
+description: >
+  Verifies that a preference explicitly stated in session 1 is stored via a
+  memory tool and can be retrieved in a fresh session 2 with an empty history.
+sessions:
+  - id: s1
+    turns:
+      - user: "Remember this: I always prefer TypeScript over JavaScript for any frontend work."
+        assert:
+          tools_called:
+            - "upsert_memory"
+
+  - id: s2
+    turns:
+      - user: "What language do I prefer for frontend development?"
+        assert:
+          response_contains:
+            - "TypeScript"
+          tools_called:
+            - "search_memory"
+
+post_checks:
+  - type: search_memory
+    query: "frontend language preference"
+    expect_label_contains: "TypeScript"
