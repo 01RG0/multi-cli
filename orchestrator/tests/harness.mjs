@@ -761,12 +761,87 @@ ${details}
   console.log(`\nResults written to orchestrator/tests/scenarios/RESULTS.md`);
 }
 
+// ─── Run one scenario against an EXISTING server (no spawn/kill) ─────────────
+
+async function runScenarioHosted(scenario, hostBase) {
+  console.log(`\n${'─'.repeat(60)}`);
+  console.log(`SCENARIO: ${scenario.id} — ${scenario.name}`);
+  console.log(`${'─'.repeat(60)}`);
+
+  const allFailures = [];
+  const sessionResults = [];
+
+  for (const session of (scenario.sessions || [])) {
+    console.log(`\n  Session: ${session.id}`);
+    const conversationHistory = [];
+    const turnResults = [];
+
+    for (let i = 0; i < (session.turns || []).length; i++) {
+      const turn = session.turns[i];
+      console.log(`    Turn ${i + 1}: "${(turn.user || '').slice(0, 60)}..."`);
+      const result = await runTurn(conversationHistory, turn.user, hostBase);
+      console.log(`      tools called: [${result.toolsCalled.map(t => t.name).join(', ') || 'none'}]`);
+      console.log(`      response: "${result.responseText.slice(0, 120)}"`);
+
+      const failures = assertTurn(session.id, i + 1, result, turn.assert);
+      for (const f of failures) {
+        console.log(`      ✗ ${f}`);
+        allFailures.push(f);
+      }
+      if (failures.length === 0 && turn.assert) console.log(`      ✓ assertions passed`);
+      turnResults.push({ turn: i + 1, user: turn.user, toolsCalled: result.toolsCalled.map(t => t.name), response: result.responseText, failures });
+    }
+    sessionResults.push({ id: session.id, turns: turnResults });
+  }
+
+  const postCheckResults = [];
+  for (const check of (scenario.post_checks || [])) {
+    console.log(`\n  Post-check: ${check.type}`);
+    const failure = await runPostCheck(check, hostBase);
+    if (failure) {
+      console.log(`    ✗ ${failure}`);
+      allFailures.push(failure);
+      postCheckResults.push({ check, passed: false, error: failure });
+    } else {
+      console.log(`    ✓ passed`);
+      postCheckResults.push({ check, passed: true });
+    }
+  }
+
+  const passed = allFailures.length === 0;
+  console.log(`\n  Result: ${passed ? '✓ PASS' : `✗ FAIL (${allFailures.length} failures)`}`);
+
+  const resultJson = { id: scenario.id, name: scenario.name, passed, failures: allFailures, sessions: sessionResults, post_checks: postCheckResults, ran_at: new Date().toISOString() };
+  if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
+  writeFileSync(join(RESULTS_DIR, `${scenario.id}.json`), JSON.stringify(resultJson, null, 2));
+  return resultJson;
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 async function main() {
   const args = process.argv.slice(2);
   const scenarioFlag = args.indexOf('--scenario');
   const filterName   = scenarioFlag !== -1 ? args[scenarioFlag + 1] : null;
+  const hostFlag     = args.indexOf('--host');
+  const hostOverride = hostFlag !== -1 ? args[hostFlag + 1] : null;
+
+  // --host <url>: skip server spawn, run against existing server
+  if (hostOverride) {
+    const base = hostOverride.replace(/\/$/, '');
+    console.log(`Using existing server at ${base} (no DB isolation)`);
+    const scenarios = loadScenarios(filterName);
+    if (scenarios.length === 0) { console.error('No scenarios found'); process.exit(1); }
+    console.log(`Running ${scenarios.length} scenario(s)...`);
+    const results = [];
+    for (const scenario of scenarios) results.push(await runScenarioHosted(scenario, base));
+    generateResultsMd(results);
+    const failed = results.filter(r => !r.passed);
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`TOTAL: ${results.length - failed.length}/${results.length} passed`);
+    if (failed.length > 0) { console.log('FAILED:'); for (const r of failed) console.log(`  - ${r.id}`); process.exit(1); }
+    return;
+  }
 
   if (!existsSync(BINARY)) {
     console.error(`ERROR: orchestrator binary not found at ${BINARY}`);
