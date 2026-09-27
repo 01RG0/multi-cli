@@ -199,21 +199,16 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avgLatency]);
 
-  // Node activation ticker (every 1.7s)
+  // Node activation: pulse the node matching any currently-running task agent
   useEffect(() => {
-    const QUERIES = ['SELECT *', 'INSERT', 'UPDATE', 'JOIN', 'INDEX', 'VACUUM'];
-    const t = setInterval(() => {
-      const node = BASE_NODES[Math.floor(Math.random() * BASE_NODES.length)];
-      setActiveNode(node.id);
-      setQueryLabel({
-        text: `${QUERIES[Math.floor(Math.random() * QUERIES.length)]} ${node.label}`,
-        x: node.x,
-        y: node.y - node.r - 10,
-      });
-      setTimeout(() => { setActiveNode(null); setQueryLabel(null); }, 700);
-    }, 1700);
-    return () => clearInterval(t);
-  }, []);
+    if (!runningTask) { setActiveNode(null); setQueryLabel(null); return; }
+    const agentNode = BASE_NODES.find(n => n.id === 'agents' || n.id === 'tasks');
+    if (agentNode) {
+      setActiveNode(agentNode.id);
+      setQueryLabel({ text: `task #${runningTask.id}`, x: agentNode.x, y: agentNode.y - agentNode.r - 10 });
+    }
+    return () => { setActiveNode(null); setQueryLabel(null); };
+  }, [runningTask?.id]);
 
   const isDrawer = isExpanded && !isEmbedded;
   const containerClasses = isDrawer
@@ -267,7 +262,7 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
               <h1 className="text-4xl font-bold text-white tracking-tight">{agent.name}</h1>
               <span className="px-3 py-1 bg-white/10 text-white text-xs font-medium rounded-full border border-white/20 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                RUNNING TASK #{agent.taskId || 47}
+                {agent.taskId && agent.taskId !== '—' ? `RUNNING TASK #${agent.taskId}` : 'IDLE'}
               </span>
             </div>
           </div>

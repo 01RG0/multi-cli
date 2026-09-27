@@ -490,7 +490,7 @@ export const SwarmRadialTopology: React.FC = () => {
                     <span className="text-[8px] px-1 border rounded ml-1 shrink-0" style={{ borderColor: color, color }}>{agent.status}</span>
                   </div>
                   <div className="flex gap-1.5 text-[9px] text-zinc-700 mt-0.5">
-                    <span className="flex items-center gap-0.5"><Clock size={8} />{agentLiveLatency[agent.id] || agent.latency || '35ms'}</span>
+                    <span className="flex items-center gap-0.5"><Clock size={8} />{agentLiveLatency[agent.id] || (agent.latency ? agent.latency : '--')}</span>
                     <span className="flex items-center gap-0.5"><Zap size={8} />#{agent.tasks ?? agent.tasksCompleted ?? 0}</span>
                   </div>
                 </div>

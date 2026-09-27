@@ -7,32 +7,15 @@ export const TaskExecutionChat: React.FC = () => {
   const selectedAgentId = store.selectedAgentId || 'opencode';
   const agent = store.agents.find((a) => a.id === selectedAgentId) || store.agents[0] || {
     name: 'opencode',
-    tokensUsed: 220000,
-    status: 'running',
+    tokensUsed: 0,
+    status: 'idle',
   };
 
   const [inputMessage, setInputMessage] = useState('');
   const [copied, setCopied] = useState(false);
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'agent'; text: string; code?: string }>>([
-    {
-      role: 'user',
-      text: 'Dispatching task #47: Inspect SQLite temporal graph and synthesize active agent memory schema.',
-    },
-    {
-      role: 'agent',
-      text: 'Orchestrating agent sub-routine across temporal knowledge graph...',
-      code: `func QueryTemporalContext(ctx context.Context, db *sql.DB, taskId string) ([]Node, error) {
-    query := \`SELECT id, label, valid_at FROM graph_nodes WHERE valid_at <= ? AND (invalid_at IS NULL OR invalid_at > ?)\`
-    return db.QueryContext(ctx, query, time.Now(), time.Now())
-}`,
-    },
-    {
-      role: 'agent',
-      text: 'Completed graph traversal. Sub-agents opencode and codex reporting nominal execution status.',
-    },
-  ]);
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'agent'; text: string; code?: string }>>([]);
 
-  const activeTaskId = store.selectedTaskId || agent.currentTaskId || '1024';
+  const activeTaskId = store.selectedTaskId || agent.currentTaskId || null;
 
   const handleSend = () => {
     if (!inputMessage.trim()) return;
