@@ -151,9 +151,6 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   const [perfFlash, setPerfFlash] = useState(false);
 
   // ── Memory graph state ──
-  const [nodeRows, setNodeRows] = useState<Record<string, number>>(
-    Object.fromEntries(BASE_NODES.map(n => [n.id, n.rows]))
-  );
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [queryLabel, setQueryLabel] = useState<{ text: string; x: number; y: number } | null>(null);
 
@@ -478,7 +475,6 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
                 {/* Nodes */}
                 {BASE_NODES.map(n => {
                   const isAct = activeNode === n.id;
-                  const rows = nodeRows[n.id] ?? n.rows;
                   return (
                     <g key={n.id}>
                       {/* Outer pulse ring */}
@@ -540,17 +536,6 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
                         {n.label}
                       </text>
 
-                      {/* Row count badge */}
-                      <text
-                        x={n.x}
-                        y={n.y + n.r + 19}
-                        fill={isAct ? '#a1a1aa' : '#3f3f46'}
-                        fontSize="6.5"
-                        textAnchor="middle"
-                        fontFamily="monospace"
-                      >
-                        {rows.toLocaleString()} rows
-                      </text>
                     </g>
                   );
                 })}
