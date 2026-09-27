@@ -162,9 +162,8 @@ export default function MemoryNeuralGraph() {
   const lastMemoryEvent = useSwarmStore(s => s.lastMemoryEvent);
 
   const mapGraphToMemNodes = useCallback((backendNodes: BackendNode[], backendEdges: BackendEdge[]): MemNode[] => {
-    // Keep SEED_NODES only as an empty-state fallback if SQLite has 0 nodes
     if (!backendNodes || backendNodes.length === 0) {
-      return SEED_NODES;
+      return [];
     }
 
     const adj = new Map<string, string[]>();

@@ -113,14 +113,14 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
   const totalFinished = completedTasks.length + failedTasks.length;
   const successRate = totalFinished > 0 
     ? Math.round((completedTasks.length / totalFinished) * 100) 
-    : (rawAgent?.successRate || 98);
+    : (rawAgent?.successRate ?? 0);
   const errorRate = 100 - successRate;
 
   const avgLatency = completedTasks.length > 0
     ? Math.round(completedTasks.reduce((acc: number, t: any) => acc + (t.latencyMs || 0), 0) / completedTasks.length)
-    : (rawAgent?.avgLatencyMs || rawAgent?.metrics?.avgLatency || 131);
+    : (rawAgent?.avgLatencyMs || rawAgent?.metrics?.avgLatency || 0);
 
-  const tokensUsed = rawAgent?.tokensUsed || (tasksCompletedCount * 1250);
+  const tokensUsed = rawAgent?.tokensUsed ?? 0;
 
   const agent = {
     name: rawAgent?.name || resolvedId,
@@ -290,10 +290,10 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'TASKS COMPLETED', value: agent.metrics?.tasksCompleted || 483, icon: Target },
-              { label: 'SUCCESS RATE',    value: `${agent.metrics?.successRate || 97}%`, icon: Activity },
-              { label: 'AVG LATENCY',     value: `${agent.metrics?.avgLatency || 131}ms`, icon: Clock },
-              { label: 'TOKENS USED',     value: `${((agent.metrics?.tokensUsed || 220000) / 1000).toFixed(0)}K`, icon: Zap },
+              { label: 'TASKS COMPLETED', value: agent.metrics?.tasksCompleted ?? 0, icon: Target },
+              { label: 'SUCCESS RATE',    value: agent.metrics?.successRate ? `${agent.metrics.successRate}%` : '--', icon: Activity },
+              { label: 'AVG LATENCY',     value: agent.metrics?.avgLatency ? `${agent.metrics.avgLatency}ms` : '--', icon: Clock },
+              { label: 'TOKENS USED',     value: agent.metrics?.tokensUsed ? `${((agent.metrics.tokensUsed) / 1000).toFixed(0)}K` : '--', icon: Zap },
             ].map((kpi, i) => (
               <div key={i} className="bg-[#121215] border border-[#27272a] rounded-lg p-4 flex flex-col hover:border-zinc-700 transition-colors">
                 <div className="flex items-center gap-2 text-zinc-500 text-xs font-medium mb-3">
@@ -346,7 +346,7 @@ export const AgentDeepInspector: React.FC<AgentDeepInspectorProps> = ({
                       perfFlash ? 'text-blue-300' : 'text-blue-400'
                     }`}
                   >
-                    {curVal.toFixed(1)}%
+                    {curVal > 0 ? `${curVal.toFixed(0)}ms` : '--'}
                   </span>
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                 </div>
