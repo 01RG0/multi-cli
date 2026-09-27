@@ -427,6 +427,28 @@ async function executeTool(name, input, base) {
 
 // ─── Agentic turn loop ────────────────────────────────────────────────────────
 
+const COOLDOWN_WAIT_MS = 70_000; // slightly over the 60s server cooldown
+const MAX_RETRIES = 3;
+
+async function fetchWithRetry(base, payload) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(`${base}/v1/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return res.json();
+    const body = await res.text();
+    const isExhausted = body.includes('exhausted') || body.includes('cooling down') || res.status === 429 || res.status === 502;
+    if (isExhausted && attempt < MAX_RETRIES) {
+      console.log(`      ⏳ providers exhausted/cooling — waiting ${COOLDOWN_WAIT_MS / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+      await sleep(COOLDOWN_WAIT_MS);
+      continue;
+    }
+    throw new Error(`/v1/messages HTTP ${res.status}: ${body}`);
+  }
+}
+
 async function runTurn(conversationHistory, userText, base) {
   conversationHistory.push({ role: 'user', content: userText });
 
@@ -445,21 +467,8 @@ async function runTurn(conversationHistory, userText, base) {
       messages:   conversationHistory,
     };
 
-    let response;
-    const res = await fetch(`${base}/v1/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`/v1/messages HTTP ${res.status}: ${body}`);
-    }
-    response = await res.json();
-
-    if (response.error) {
-      throw new Error(`API error: ${response.error.message}`);
-    }
+    const response = await fetchWithRetry(base, payload);
+    if (response.error) throw new Error(`API error: ${response.error.message}`);
 
     // Collect text blocks
     for (const block of (response.content || [])) {
@@ -834,7 +843,13 @@ async function main() {
     if (scenarios.length === 0) { console.error('No scenarios found'); process.exit(1); }
     console.log(`Running ${scenarios.length} scenario(s)...`);
     const results = [];
-    for (const scenario of scenarios) results.push(await runScenarioHosted(scenario, base));
+    for (let i = 0; i < scenarios.length; i++) {
+      if (i > 0) {
+        console.log(`\n  ⏸  Pausing 15s between scenarios to ease rate limits...`);
+        await sleep(15_000);
+      }
+      results.push(await runScenarioHosted(scenarios[i], base));
+    }
     generateResultsMd(results);
     const failed = results.filter(r => !r.passed);
     console.log(`\n${'═'.repeat(60)}`);
