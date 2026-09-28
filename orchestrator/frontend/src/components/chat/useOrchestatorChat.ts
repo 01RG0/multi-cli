@@ -628,6 +628,12 @@ const ULTRON_TOOLS = [
 
 const BASE = '';
 
+// Cap large tool results so they don't bloat the conversation context and cause OOM.
+function capToolResult(result: string, maxChars = 4000): string {
+  if (result.length <= maxChars) return result;
+  return result.slice(0, maxChars) + `...[truncated ${result.length - maxChars} chars]`;
+}
+
 async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
   try {
     if (name.startsWith('mcp__')) {
@@ -960,7 +966,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ method: input['method'] || 'GET', endpoint: input['endpoint'], body: input['body'] }),
         });
-        return JSON.stringify(await r.json());
+        return capToolResult(JSON.stringify(await r.json()));
       }
       case 'github_cli': {
         const r = await fetch(`${BASE}/api/github/cli`, {
@@ -968,7 +974,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ args: input['args'], cwd: input['cwd'] }),
         });
-        return JSON.stringify(await r.json());
+        return capToolResult(JSON.stringify(await r.json()));
       }
       case 'github_read_file': {
         const ref = (input['ref'] as string) || 'main';
@@ -979,9 +985,9 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         });
         const data = await r.json();
         if (data.content) {
-          return JSON.stringify({ ...data, decoded_content: atob(data.content.replace(/\n/g, '')) });
+          return capToolResult(JSON.stringify({ ...data, decoded_content: atob(data.content.replace(/\n/g, '')) }));
         }
-        return JSON.stringify(data);
+        return capToolResult(JSON.stringify(data));
       }
       case 'github_write_file': {
         const encoded = btoa(unescape(encodeURIComponent(input['content'] as string)));
@@ -1005,7 +1011,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ args: ['repo', 'list', '--json', 'name,description,url,isPrivate,updatedAt', '--limit', String(limit)] }),
         });
-        return JSON.stringify(await r.json());
+        return capToolResult(JSON.stringify(await r.json()));
       }
       case 'github_create_pr': {
         const r = await fetch(`${BASE}/api/github/api`, {
@@ -1481,12 +1487,20 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             memoryNotes: memoryNotesRef.current.slice(-20),
           });
 
+          // Trim context: cap at 20 messages normally, 12 if any message is large
+          const rawMsgs = conversationsBySession.current[currentSessionId] || [];
+          const hasLargeMsgs = rawMsgs.some(m =>
+            typeof m.content === 'string' && m.content.length > 5000
+          );
+          const trimTo = hasLargeMsgs ? 12 : 20;
+          const trimmedMsgs = rawMsgs.slice(-trimTo);
+
           const payload = {
             model:      'us.anthropic.claude-sonnet-4-6',
             max_tokens: 4096,
             system:     dynamicPrompt,
             tools:      activeTools,
-            messages:   conversationsBySession.current[currentSessionId],
+            messages:   trimmedMsgs,
           };
 
           const callStartMs = Date.now();

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -251,7 +252,20 @@ func (s *Server) Handler() http.Handler {
 		fs.ServeHTTP(w, r)
 	})
 
-	return mux
+	return recoveryMiddleware(mux)
+}
+
+// recoveryMiddleware catches panics in any handler and returns 500 instead of crashing.
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("handler panic recovered: %v", rec)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Start() error {

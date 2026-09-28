@@ -1,13 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+const maxGHOutput = 100 * 1024 // 100 KB cap on gh output
 
 // ghEnv returns the process environment with HOME forced to /home/rootuser
 // so that gh finds its auth config regardless of what systemd set HOME to.
@@ -20,6 +24,22 @@ func ghEnv() []string {
 		}
 	}
 	return append(out, "HOME=/home/rootuser")
+}
+
+// capGHOutput truncates gh output to maxGHOutput and re-wraps if JSON becomes invalid.
+func capGHOutput(out []byte) []byte {
+	if len(out) <= maxGHOutput {
+		return out
+	}
+	truncated := out[:maxGHOutput]
+	if json.Valid(truncated) {
+		return truncated
+	}
+	wrapped, _ := json.Marshal(map[string]string{
+		"truncated_output": string(truncated),
+		"note":             fmt.Sprintf("output truncated from %d to %d bytes", len(out), maxGHOutput),
+	})
+	return wrapped
 }
 
 // handleGitHubAPI proxies to `gh api`: POST /api/github/api
@@ -58,7 +78,10 @@ func (s *Server) handleGitHubAPI(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--input", "-")
 	}
 
-	cmd := exec.Command("gh", args...)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
 	if bodyJSON != nil {
 		cmd.Stdin = strings.NewReader(string(bodyJSON))
 	}
@@ -74,7 +97,7 @@ func (s *Server) handleGitHubAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(out)
+	w.Write(capGHOutput(out))
 }
 
 // handleGitHubCLI runs arbitrary gh subcommands: POST /api/github/cli
@@ -106,7 +129,10 @@ func (s *Server) handleGitHubCLI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("gh", req.Args...)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "gh", req.Args...)
 	cmd.Env = ghEnv()
 	if req.Cwd != "" {
 		cmd.Dir = req.Cwd
@@ -122,6 +148,7 @@ func (s *Server) handleGitHubCLI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	out = capGHOutput(out)
 	if json.Valid(out) {
 		w.Write(out)
 	} else {
