@@ -56,6 +56,19 @@ CREATE TABLE IF NOT EXISTS tasks (
     attempt        INTEGER DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status, priority DESC, created_at);
+CREATE TABLE IF NOT EXISTS autonomous_tasks (
+    id           TEXT PRIMARY KEY,
+    goal         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'running',
+    current_step INTEGER DEFAULT 0,
+    total_steps  INTEGER DEFAULT 0,
+    steps_json   TEXT,
+    created_at   INTEGER,
+    updated_at   INTEGER,
+    deadline_ms  INTEGER,
+    retry_count  INTEGER DEFAULT 0,
+    last_error   TEXT
+);
 `)
 	if err != nil {
 		return err

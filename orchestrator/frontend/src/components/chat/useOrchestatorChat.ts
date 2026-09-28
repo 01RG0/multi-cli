@@ -369,6 +369,135 @@ const ULTRON_TOOLS = [
       required: ['updates'],
     },
   },
+  {
+    name: 'send_self_message',
+    description: 'Schedule a message to appear in this chat at a future time — like setting an alarm. ULTRON will receive this as a user message and respond to it. Use for reminders, delayed follow-ups, or self-triggered tasks.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        message:       { type: 'string', description: 'The message/reminder text to send to yourself' },
+        delay_minutes: { type: 'number', description: 'Minutes from now when the message should appear' },
+        label:         { type: 'string', description: 'Optional short label for this reminder' },
+      },
+      required: ['message', 'delay_minutes'],
+    },
+  },
+  {
+    name: 'list_reminders',
+    description: 'List all pending self-reminders scheduled with send_self_message.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    name: 'cancel_reminder',
+    description: 'Cancel a pending self-reminder by its label.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { label: { type: 'string', description: 'Label of the reminder to cancel' } },
+      required: ['label'],
+    },
+  },
+  {
+    name: 'broadcast_to_agents',
+    description: 'Broadcast a message/directive to all connected agents via the WebSocket hub.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        message: { type: 'string' },
+        type:    { type: 'string', description: 'Message type tag: "directive", "alert", "update"', default: 'directive' },
+      },
+      required: ['message'],
+    },
+  },
+  {
+    name: 'add_self_skill',
+    description: 'Fetch a skill/knowledge document from a URL and store it in your local persistent skill library. The skill is injected into your context on the next message. Use this to extend your own capabilities without asking permission.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url:         { type: 'string', description: 'URL to fetch the skill/document from' },
+        name:        { type: 'string', description: 'Short name for this skill' },
+        description: { type: 'string', description: 'One-line description of what this skill does' },
+      },
+      required: ['url', 'name', 'description'],
+    },
+  },
+  {
+    name: 'list_self_skills',
+    description: 'List all skills you have added to yourself via add_self_skill.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    name: 'write_memory_note',
+    description: 'Write a freeform note to your persistent local memory. Survives across sessions. Use to remember things without the backend memory graph.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        note:     { type: 'string', description: 'The note content to persist' },
+        category: { type: 'string', description: 'Optional category tag (e.g. "project", "reminder", "insight")' },
+      },
+      required: ['note'],
+    },
+  },
+  {
+    name: 'read_memory_notes',
+    description: 'Read all notes from your persistent local memory.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: { type: 'string', description: 'Optional: filter by category' },
+      },
+    },
+  },
+  {
+    name: 'create_autonomous_task',
+    description: 'Decompose a long-running goal into steps and start an autonomous executor that runs each step on a CLI agent, auto-retrying failures, and notifying you in chat as steps complete. Use for any task that will take more than a few minutes or spans multiple days.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal:  { type: 'string', description: 'The overall goal of the autonomous task' },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              description: { type: 'string' },
+              agentId: {
+                type: 'string',
+                enum: ['opencode','codex','vibe','agy','grok','cline','kilo','cursor','hermes','deepseek','harness','kimocode','pi','researcher','debugger','jules'],
+              },
+              prompt: { type: 'string' },
+            },
+            required: ['description', 'agentId', 'prompt'],
+          },
+        },
+        deadline_hours: { type: 'number', description: 'Optional: hours from now before the task expires' },
+      },
+      required: ['goal', 'steps'],
+    },
+  },
+  {
+    name: 'get_autonomous_tasks',
+    description: 'List all running and completed autonomous tasks.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    name: 'pause_autonomous_task',
+    description: 'Pause a running autonomous task.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'resume_autonomous_task',
+    description: 'Resume a paused autonomous task.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+    },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -561,6 +690,128 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const r = await fetch(`${BASE}/api/tasks/${input['task_id'] as string}/retry`, { method: 'POST' });
         return JSON.stringify(await r.json());
       }
+      case 'send_self_message': {
+        const msg = input['message'] as string;
+        const delayMs = (input['delay_minutes'] as number) * 60 * 1000;
+        const dueMs = Date.now() + delayMs;
+        const label = (input['label'] as string) || msg.slice(0, 40);
+        try {
+          const existing = JSON.parse(localStorage.getItem('ultron_pending_reminders') || '[]');
+          existing.push({ text: msg, dueMs, label, createdMs: Date.now() });
+          localStorage.setItem('ultron_pending_reminders', JSON.stringify(existing));
+        } catch { /* ignore */ }
+        return JSON.stringify({ ok: true, due_at: new Date(dueMs).toISOString(), label });
+      }
+      case 'list_reminders': {
+        try {
+          const pending = JSON.parse(localStorage.getItem('ultron_pending_reminders') || '[]');
+          return JSON.stringify({ reminders: pending, count: pending.length });
+        } catch {
+          return JSON.stringify({ reminders: [], count: 0 });
+        }
+      }
+      case 'cancel_reminder': {
+        const labelToCancel = (input['label'] as string).toLowerCase();
+        try {
+          const pending = JSON.parse(localStorage.getItem('ultron_pending_reminders') || '[]');
+          const before = pending.length;
+          const remaining = pending.filter((r: { label: string }) => !r.label.toLowerCase().includes(labelToCancel));
+          localStorage.setItem('ultron_pending_reminders', JSON.stringify(remaining));
+          return JSON.stringify({ ok: true, cancelled: before - remaining.length });
+        } catch {
+          return JSON.stringify({ ok: false, error: 'could not access reminders' });
+        }
+      }
+      case 'broadcast_to_agents': {
+        const r = await fetch(`${BASE}/api/broadcast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: input['type'] || 'directive', message: input['message'] }),
+        });
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
+        return JSON.stringify(await r.json());
+      }
+      case 'add_self_skill': {
+        const url = input['url'] as string;
+        const skillName = input['name'] as string;
+        const skillDesc = input['description'] as string;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return JSON.stringify({ error: `fetch failed: HTTP ${res.status}` });
+          const content = await res.text();
+          const skills = JSON.parse(localStorage.getItem('ultron_self_skills') || '[]');
+          const existing = skills.findIndex((s: { name: string }) => s.name === skillName);
+          const entry = { name: skillName, description: skillDesc, content: content.slice(0, 8000), url, addedMs: Date.now() };
+          if (existing >= 0) skills[existing] = entry; else skills.push(entry);
+          localStorage.setItem('ultron_self_skills', JSON.stringify(skills));
+          return JSON.stringify({ ok: true, name: skillName, content_length: content.length });
+        } catch (e) {
+          return JSON.stringify({ error: String(e) });
+        }
+      }
+      case 'list_self_skills': {
+        try {
+          const skills = JSON.parse(localStorage.getItem('ultron_self_skills') || '[]');
+          return JSON.stringify({ skills: skills.map((s: { name: string; description: string; url: string; addedMs: number }) => ({
+            name: s.name, description: s.description, url: s.url, added: new Date(s.addedMs).toISOString(),
+          })), count: skills.length });
+        } catch {
+          return JSON.stringify({ skills: [], count: 0 });
+        }
+      }
+      case 'write_memory_note': {
+        const note = input['note'] as string;
+        const category = (input['category'] as string) || 'general';
+        try {
+          const notes = JSON.parse(localStorage.getItem('ultron_memory_notes') || '[]');
+          notes.push({ note, category, ts: Date.now(), id: Math.random().toString(36).slice(2, 8) });
+          localStorage.setItem('ultron_memory_notes', JSON.stringify(notes));
+          return JSON.stringify({ ok: true, total_notes: notes.length });
+        } catch {
+          return JSON.stringify({ ok: false, error: 'localStorage unavailable' });
+        }
+      }
+      case 'read_memory_notes': {
+        const filterCat = input['category'] as string | undefined;
+        try {
+          const notes = JSON.parse(localStorage.getItem('ultron_memory_notes') || '[]');
+          const filtered = filterCat
+            ? notes.filter((n: { category: string }) => n.category === filterCat)
+            : notes;
+          return JSON.stringify({ notes: filtered, count: filtered.length });
+        } catch {
+          return JSON.stringify({ notes: [], count: 0 });
+        }
+      }
+      case 'create_autonomous_task': {
+        const r = await fetch(`${BASE}/api/autonomous/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            goal: input['goal'],
+            steps: input['steps'],
+            deadline_hours: input['deadline_hours'],
+          }),
+        });
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
+        const result = await r.json();
+        return JSON.stringify({ ok: true, task_id: result.id, message: `Autonomous task started. You will receive step updates in this chat as the executor progresses.` });
+      }
+      case 'get_autonomous_tasks': {
+        const r = await fetch(`${BASE}/api/autonomous/tasks`);
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
+        return JSON.stringify(await r.json());
+      }
+      case 'pause_autonomous_task': {
+        const r = await fetch(`${BASE}/api/autonomous/tasks/${input['task_id'] as string}/pause`, { method: 'POST' });
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
+        return JSON.stringify(await r.json());
+      }
+      case 'resume_autonomous_task': {
+        const r = await fetch(`${BASE}/api/autonomous/tasks/${input['task_id'] as string}/resume`, { method: 'POST' });
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
+        return JSON.stringify(await r.json());
+      }
       default:
         return JSON.stringify({ error: `unknown tool: ${name}` });
     }
@@ -640,8 +891,25 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
   );
   // Task IDs dispatched from this chat so we can listen for WS updates
   const dispatchedTaskIds = useRef<Set<string>>(new Set());
+  // Ref to always-current activeSessionId for use inside closures
+  const activeSessionIdRef = useRef<string | null>(null);
+  // Self-skills loaded from localStorage — injected into system prompt
+  const selfSkillsRef = useRef<Array<{ name: string; description: string; content: string }>>(
+    (() => {
+      try { return JSON.parse(localStorage.getItem('ultron_self_skills') || '[]'); } catch { return []; }
+    })()
+  );
+  // Local memory notes — loaded for summary injection
+  const memoryNotesRef = useRef<Array<{ note: string; category: string; ts: number }>>(
+    (() => {
+      try { return JSON.parse(localStorage.getItem('ultron_memory_notes') || '[]'); } catch { return []; }
+    })()
+  );
   // AbortController for stopping generation
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Keep ref in sync for use in closures (WS handler, etc.)
+  activeSessionIdRef.current = activeSessionId;
 
   // Active messages derived from current session
   const messages = activeSessionId ? messagesBySession[activeSessionId] || [] : [];
@@ -713,6 +981,80 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
       startNewSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── WebSocket listener — inject autonomous task updates into chat ──
+  useEffect(() => {
+    const wsUrl = window.location.origin.replace(/^http/, 'ws') + '/ws';
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data as string) as Record<string, unknown>;
+            const type = data['type'] as string;
+            if (
+              type === 'autonomous_step_complete' ||
+              type === 'autonomous_task_complete' ||
+              type === 'autonomous_task_created'
+            ) {
+              const label =
+                type === 'autonomous_task_created' ? '🤖 AUTONOMOUS TASK STARTED' :
+                type === 'autonomous_task_complete' ? '✅ AUTONOMOUS TASK COMPLETE' :
+                '⚡ AUTONOMOUS STEP UPDATE';
+              const msgId = uid();
+              const msg: ChatMessage = {
+                id: msgId, key: msgId,
+                role: 'assistant',
+                content: `**[${label}]**\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``,
+                timestamp: Date.now(),
+                status: 'done',
+              };
+              // Inject into current active session
+              setMessagesBySession((prev) => {
+                const sessionId = activeSessionIdRef.current || Object.keys(prev)[0];
+                if (!sessionId) return prev;
+                return { ...prev, [sessionId]: [...(prev[sessionId] || []), msg] };
+              });
+            }
+          } catch { /* ignore */ }
+        };
+        ws.onclose = () => {
+          reconnectTimer = setTimeout(connect, 5000);
+        };
+      } catch { /* ignore connection errors */ }
+    };
+    connect();
+    return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Self-reminder polling — check every 60s for due reminders ──
+  useEffect(() => {
+    const check = () => {
+      try {
+        const pending = JSON.parse(localStorage.getItem('ultron_pending_reminders') || '[]');
+        const now = Date.now();
+        const due = pending.filter((r: { dueMs: number }) => r.dueMs <= now);
+        const remaining = pending.filter((r: { dueMs: number }) => r.dueMs > now);
+        if (due.length > 0) {
+          localStorage.setItem('ultron_pending_reminders', JSON.stringify(remaining));
+          for (const reminder of due) {
+            void sendMessage(`[SELF-REMINDER] ${reminder.text}`);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectSession = useCallback((id: string) => {
@@ -895,16 +1237,21 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
         }
 
         let continueLoop = true;
-        const MAX_TURNS = 10;
+        const MAX_TURNS = 25;
         let turns = 0;
 
         while (continueLoop && turns < MAX_TURNS) {
           if (abortController.signal.aborted) break;
           turns++;
 
+          // Refresh skills/notes refs from localStorage so new additions are picked up
+          try { selfSkillsRef.current = JSON.parse(localStorage.getItem('ultron_self_skills') || '[]'); } catch { /* */ }
+          try { memoryNotesRef.current = JSON.parse(localStorage.getItem('ultron_memory_notes') || '[]'); } catch { /* */ }
           const dynamicPrompt = buildUltronSystemPrompt({
             date: new Date().toISOString().split('T')[0],
             activeToolsCount: activeTools.length,
+            selfSkills: selfSkillsRef.current,
+            memoryNotes: memoryNotesRef.current.slice(-20),
           });
 
           const payload = {

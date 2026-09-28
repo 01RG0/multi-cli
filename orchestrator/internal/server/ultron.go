@@ -1056,6 +1056,37 @@ func (s *Server) handleCLIModels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleBroadcast accepts a POST body with {type, message} and broadcasts to all WS clients.
+// POST /api/broadcast
+func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Type == "" {
+		body.Type = "directive"
+	}
+	s.Hub.Broadcast(map[string]any{
+		"type":    body.Type,
+		"message": body.Message,
+		"from":    "ultron",
+		"ts":      time.Now().UnixMilli(),
+	})
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
 func (s *Server) handleTableStats(w http.ResponseWriter, r *http.Request) {
 	corsJSON(w)
 	if handleCORSPreflight(w, r, "GET") {

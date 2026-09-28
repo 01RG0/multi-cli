@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/01rg0/orchestrator/internal/config"
@@ -214,6 +215,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/providers", s.handleProviderHealth)
 	mux.HandleFunc("/api/providers/stats", s.handleProviderStats)
 	mux.HandleFunc("/api/cli/models", s.handleCLIModels)
+	mux.HandleFunc("/api/broadcast", s.handleBroadcast)
+
+	// Autonomous long-running task routes
+	if s.db != nil {
+		mux.HandleFunc("/api/autonomous/tasks", s.handleAutonomousTasks)
+		mux.HandleFunc("/api/autonomous/tasks/", func(w http.ResponseWriter, r *http.Request) {
+			path := r.URL.Path
+			switch {
+			case strings.HasSuffix(path, "/pause"):
+				s.handleAutonomousTaskPause(w, r)
+			case strings.HasSuffix(path, "/resume"):
+				s.handleAutonomousTaskResume(w, r)
+			case strings.HasSuffix(path, "/step"):
+				s.handleAutonomousTaskStep(w, r)
+			default:
+				s.handleAutonomousTaskByID(w, r)
+			}
+		})
+	}
 
 	// Serve React frontend — SPA fallback: unknown paths → index.html
 	distDir := "frontend/dist"

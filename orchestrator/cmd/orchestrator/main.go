@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/01rg0/orchestrator/internal/agent"
+	"github.com/01rg0/orchestrator/internal/autonomous"
 	"github.com/01rg0/orchestrator/internal/config"
 	"github.com/01rg0/orchestrator/internal/db"
 	"github.com/01rg0/orchestrator/internal/improvement"
@@ -128,6 +129,10 @@ func main() {
 		q := queue.New(database)
 		srv.SetQueue(q)
 		srv.RegisterUltronRoutes(database, g, q)
+
+		// Start autonomous task executor — resumes any 'running' tasks from before restart.
+		autoExec := autonomous.NewExecutor(database, srv.Hub, "")
+		go autoExec.Run(ctx)
 
 		// Start MCP servers (soft failure — errors are logged, not fatal).
 		if len(cfg.MCPServers) > 0 {
