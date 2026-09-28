@@ -33,6 +33,9 @@ func (m *mockProvider) Stream(_ context.Context, _ provider.ChatRequest) (<-chan
 	close(ch)
 	return ch, nil
 }
+func (m *mockProvider) Model() string                          { return "mock-model" }
+func (m *mockProvider) SetModel(s string)                      {}
+func (m *mockProvider) ListModels(_ context.Context) ([]string, error) { return []string{"mock-model"}, nil }
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()

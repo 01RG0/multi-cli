@@ -270,6 +270,34 @@ const ULTRON_TOOLS = [
     input_schema: { type: 'object' as const, properties: {} },
   },
   {
+    name: 'get_provider_catalog',
+    description: 'List all free models available for every provider. Call before switching to discover options.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    name: 'switch_provider_model',
+    description: 'Switch a provider to a specific model from its catalog.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Provider name, e.g. groq, gemini, aihubmix' },
+        model:    { type: 'string', description: 'Model name from the catalog' },
+      },
+      required: ['provider', 'model'],
+    },
+  },
+  {
+    name: 'test_provider',
+    description: 'Ping a provider with a minimal request to check it is responsive. Returns latency_ms.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: { type: 'string', description: 'Provider name to test' },
+      },
+      required: ['provider'],
+    },
+  },
+  {
     name: 'schedule_cron',
     description: 'Schedule a recurring task. Use standard 5-field cron syntax.',
     input_schema: {
@@ -786,6 +814,26 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
       case 'get_provider_health': {
         const r = await fetch(`${BASE}/health`);
+        return JSON.stringify(await r.json());
+      }
+      case 'get_provider_catalog': {
+        const r = await fetch(`${BASE}/api/providers/catalog`);
+        return JSON.stringify(await r.json());
+      }
+      case 'switch_provider_model': {
+        const r = await fetch(`${BASE}/api/providers/switch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: input.provider, model: input.model }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'test_provider': {
+        const r = await fetch(`${BASE}/api/providers/test`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: input.provider }),
+        });
         return JSON.stringify(await r.json());
       }
       case 'schedule_cron': {

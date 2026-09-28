@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/01rg0/orchestrator/internal/mcp"
+	"github.com/01rg0/orchestrator/internal/provider"
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/queue"
 	"github.com/01rg0/orchestrator/internal/skills"
@@ -1129,4 +1131,82 @@ func (s *Server) handleTableStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	json.NewEncoder(w).Encode(counts)
+}
+
+// ─── Provider catalog endpoints ───────────────────────────────────────────────
+
+// GET /api/providers/catalog → {"tokenharbor":["qwen3.8-flash:free",...],...}
+func (s *Server) handleProviderCatalog(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	json.NewEncoder(w).Encode(provider.GetCatalog())
+}
+
+// POST /api/providers/switch  body: {"provider":"groq","model":"llama-3.3-70b-versatile"}
+// → {"ok":true} or {"ok":false,"error":"..."}
+func (s *Server) handleProviderSwitch(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if body.Provider == "" || body.Model == "" {
+		http.Error(w, "provider and model required", http.StatusBadRequest)
+		return
+	}
+	ok := s.router.SwitchModel(body.Provider, body.Model)
+	if ok {
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "provider": body.Provider, "model": body.Model})
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "provider not found: " + body.Provider})
+	}
+}
+
+// POST /api/providers/test  body: {"provider":"groq"}
+// → {"ok":true,"latency_ms":N} or {"ok":false,"error":"..."}
+func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if body.Provider == "" {
+		http.Error(w, "provider required", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	start := time.Now()
+	err := s.router.TestProvider(ctx, body.Provider)
+	elapsed := time.Since(start).Milliseconds()
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error(), "latency_ms": elapsed})
+	} else {
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "latency_ms": elapsed})
+	}
 }

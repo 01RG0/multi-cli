@@ -123,6 +123,9 @@ Dispatch work with surgical precision to the right agent:
 ### 5. System Control, Queues & Dynamic Routing
 - **\`get_queue_status\`** / **\`get_agent_status\`**: Real-time telemetry of queue load and agent availability.
 - **\`get_provider_health\`**: Inspect provider latencies and health states.
+- **\`get_provider_catalog\`**: List all free models available for every provider. Use this to discover alternatives before switching.
+- **\`switch_provider_model\`**: Switch a provider to any model from its catalog (args: provider, model).
+- **\`test_provider\`**: Ping a provider with a minimal request to verify responsiveness (args: provider). Returns latency_ms.
 - **\`update_routing_rule\`**: Dynamically reroute tasks to optimal providers and agents based on conditions and provider health.
 - **\`schedule_cron\`**: Schedule recurring autonomous jobs using 5-field cron syntax.
 - **\`cancel_task\`** / **\`retry_task\`**: Manage the task lifecycle decisively.

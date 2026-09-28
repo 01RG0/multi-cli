@@ -353,6 +353,10 @@ func (r *Router) AutoDiscoverModels(ctx context.Context) {
 			current := p.Model()
 			score := ModelScore(best)
 			p.SetModel(best)
+			free := filterFreeModels(models)
+			catalogMu.Lock()
+			catalog[p.Name()] = free
+			catalogMu.Unlock()
 			r.mu.Lock()
 			r.tierMap[p.Name()] = score
 			r.mu.Unlock()
@@ -366,4 +370,84 @@ func (r *Router) AutoDiscoverModels(ctx context.Context) {
 	wg.Wait()
 	r.SortByTier()
 	log.Printf("[router] auto-discovery complete — chain re-sorted")
+}
+
+// ─── Model Catalog ────────────────────────────────────────────────────────────
+// catalog stores all free models per provider, populated by AutoDiscoverModels.
+
+var catalogMu sync.RWMutex
+var catalog = map[string][]string{}
+
+// filterFreeModels keeps models with :free/-free suffix, or all models if none
+// have the suffix (implicitly-free providers like groq, mistral, cohere, gemini).
+func filterFreeModels(models []string) []string {
+	var free []string
+	for _, m := range models {
+		if strings.HasSuffix(m, ":free") || strings.HasSuffix(m, "-free") {
+			free = append(free, m)
+		}
+	}
+	if len(free) > 0 {
+		return free
+	}
+	return models
+}
+
+// GetCatalog returns a snapshot of the free-model catalog.
+func GetCatalog() map[string][]string {
+	catalogMu.RLock()
+	defer catalogMu.RUnlock()
+	out := make(map[string][]string, len(catalog))
+	for k, v := range catalog {
+		cp := make([]string, len(v))
+		copy(cp, v)
+		out[k] = cp
+	}
+	return out
+}
+
+// AllProviders returns all providers in the router chain.
+func (r *Router) AllProviders() []Provider {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	all := make([]Provider, 0, 1+len(r.fallbacks))
+	if r.primary != nil {
+		all = append(all, r.primary)
+	}
+	all = append(all, r.fallbacks...)
+	return all
+}
+
+// SwitchModel sets a new model on the named provider. Returns false if not found.
+func (r *Router) SwitchModel(name, model string) bool {
+	for _, p := range r.AllProviders() {
+		if p.Name() == name {
+			p.SetModel(model)
+			score := ModelScore(model)
+			r.mu.Lock()
+			r.tierMap[name] = score
+			r.mu.Unlock()
+			log.Printf("[router] manual switch: %s → %s (score=%d)", name, model, score)
+			return true
+		}
+	}
+	return false
+}
+
+// TestProvider sends a minimal ping to the named provider.
+func (r *Router) TestProvider(ctx context.Context, name string) error {
+	for _, p := range r.AllProviders() {
+		if p.Name() == name {
+			req := ChatRequest{
+				Model: p.Model(),
+				Messages: []Message{
+					{Role: "user", Content: "Hi"},
+				},
+				MaxTokens: 16,
+			}
+			_, err := p.Complete(ctx, req)
+			return err
+		}
+	}
+	return fmt.Errorf("provider %q not found", name)
 }

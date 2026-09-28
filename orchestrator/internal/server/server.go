@@ -215,6 +215,9 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/api/providers", s.handleProviderHealth)
 	mux.HandleFunc("/api/providers/stats", s.handleProviderStats)
+	mux.HandleFunc("/api/providers/catalog", s.handleProviderCatalog)
+	mux.HandleFunc("/api/providers/switch", s.handleProviderSwitch)
+	mux.HandleFunc("/api/providers/test", s.handleProviderTest)
 	mux.HandleFunc("/api/cli/models", s.handleCLIModels)
 	mux.HandleFunc("/api/notify", s.handleNotify)
 	mux.HandleFunc("/api/broadcast", s.handleBroadcast)
