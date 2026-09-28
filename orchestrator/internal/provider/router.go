@@ -177,9 +177,19 @@ func errText(err error) string {
 	return s
 }
 
+// isDegradedResponse reports an HTTP 200 that carries no usable answer.
+// Free tiers answer like this once the account quota is gone: a short notice
+// such as "accounts that have not been recharged can only try 10 times" with no
+// token accounting and no tool calls. Accepting it as success made the
+// dashboard display the provider's billing notice as ULTRON's own reply.
+func isDegradedResponse(resp ChatResponse) bool {
+	return resp.Usage.InputTokens == 0 && resp.Usage.OutputTokens == 0 && len(resp.ToolCalls) == 0
+}
+
 func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	chain := append([]Provider{r.primary}, r.fallbacks...)
 	var lastErr error
+	var degraded *ChatResponse
 	failures := make([]ProviderFailure, 0, len(chain))
 	cooling := 0
 	for _, p := range chain {
@@ -201,6 +211,17 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 			start := time.Now()
 			resp, err = p.Complete(ctx, req)
 			if err == nil {
+				resp.Provider = p.Name()
+				if isDegradedResponse(resp) {
+					// Keep the first unusable-but-200 reply as a last resort, then
+					// keep walking the chain: a healthy provider is preferred.
+					if degraded == nil {
+						first := resp
+						degraded = &first
+					}
+					err = fmt.Errorf("degraded response (no tokens, no content)")
+					break
+				}
 				elapsed := time.Since(start).Milliseconds()
 				now := time.Now().UnixMilli()
 				st.Requests.Add(1)
@@ -209,7 +230,6 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 				st.LastUsedMs.Store(now)
 				st.LastSuccessMs.Store(now)
 				st.TotalLatencyMs.Add(elapsed)
-				resp.Provider = p.Name()
 				return resp, nil
 			}
 			if isRateLimit(err) || isTransient(err) {
@@ -236,6 +256,10 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 		log.Printf("router: %s failed (model=%s): %s", p.Name(), p.Model(), errText(err))
 		// Re-rank so next request prefers working providers.
 		go r.RebuildChain()
+	}
+	if degraded != nil {
+		log.Printf("router: no provider produced a usable answer -- serving the best available reply from %s", degraded.Provider)
+		return *degraded, nil
 	}
 	if lastErr == nil {
 		msg := "all providers cooling down"

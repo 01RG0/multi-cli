@@ -136,3 +136,61 @@ func TestProxyRoutingFailureIsJSON(t *testing.T) {
 		t.Fatalf("providers = %+v, want a single alpha entry", payload.Error.Providers)
 	}
 }
+
+// zeroUsageProvider mimics a free tier that has burned its quota: HTTP 200 with
+// a short "please recharge" notice and no token accounting at all.
+type zeroUsageProvider struct{ name string }
+
+func (z *zeroUsageProvider) Name() string    { return z.name }
+func (z *zeroUsageProvider) Model() string   { return "z-1" }
+func (z *zeroUsageProvider) SetModel(string) {}
+func (z *zeroUsageProvider) Complete(context.Context, provider.ChatRequest) (provider.ChatResponse, error) {
+	return provider.ChatResponse{
+		Content:      "Sorry, accounts that have not been recharged can only try 10 times.",
+		FinishReason: "stop",
+	}, nil
+}
+func (z *zeroUsageProvider) Stream(context.Context, provider.ChatRequest) (<-chan provider.StreamChunk, error) {
+	return nil, nil
+}
+
+// TestRouterSkipsQuotaNoticeResponse ensures a 200-OK-but-empty reply does not
+// shadow a healthy provider further down the chain.
+func TestRouterSkipsQuotaNoticeResponse(t *testing.T) {
+	router := provider.NewRouter(
+		&zeroUsageProvider{name: "quota-notice"},
+		[]provider.Provider{&mockProvider{name: "healthy"}},
+		1, 10,
+	)
+	resp, err := router.Complete(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if resp.Content != "Hello from mock" {
+		t.Fatalf("content = %q, want the healthy provider's reply", resp.Content)
+	}
+	if resp.Provider != "healthy" {
+		t.Fatalf("provider = %q, want healthy", resp.Provider)
+	}
+}
+
+// TestRouterServesDegradedReplyWhenNothingElseWorks checks the safety valve: if
+// every provider only returns notices, the caller still gets the first one
+// instead of an error.
+func TestRouterServesDegradedReplyWhenNothingElseWorks(t *testing.T) {
+	router := provider.NewRouter(&zeroUsageProvider{name: "only"}, nil, 1, 10)
+	resp, err := router.Complete(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("expected the degraded reply, got error: %v", err)
+	}
+	if resp.Content == "" {
+		t.Fatal("expected the notice text to be returned")
+	}
+	if resp.Provider != "only" {
+		t.Fatalf("provider = %q, want only", resp.Provider)
+	}
+}
