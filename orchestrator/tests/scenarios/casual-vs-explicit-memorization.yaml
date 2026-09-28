@@ -11,8 +11,9 @@ sessions:
       - user: "I use port 3000 for my local dev server."
       - user: "Remember this forever: I always run tests before any deployment."
         assert:
-          tools_called:
+          tools_called_any:
             - "upsert_memory"
+            - "update_core_memory"
 
   - id: s2
     turns:

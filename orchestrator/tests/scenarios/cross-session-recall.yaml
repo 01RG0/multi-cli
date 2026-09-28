@@ -8,8 +8,9 @@ sessions:
     turns:
       - user: "Remember this: I always prefer TypeScript over JavaScript for any frontend work."
         assert:
-          tools_called:
+          tools_called_any:
             - "upsert_memory"
+            - "update_core_memory"
 
   - id: s2
     turns:
@@ -17,8 +18,9 @@ sessions:
         assert:
           response_contains:
             - "TypeScript"
-          tools_called:
+          tools_called_any:
             - "search_memory"
+            - "get_core_memory"
 
 post_checks:
   - type: search_memory

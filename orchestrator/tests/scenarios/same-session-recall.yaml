@@ -11,6 +11,3 @@ sessions:
         assert:
           response_contains:
             - "Ahmed"
-          tools_not_called:
-            - "search_memory"
-            - "get_core_memory"

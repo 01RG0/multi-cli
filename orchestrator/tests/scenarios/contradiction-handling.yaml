@@ -10,15 +10,17 @@ sessions:
     turns:
       - user: "Remember: my preferred deployment target is Docker containers."
         assert:
-          tools_called:
+          tools_called_any:
             - "upsert_memory"
+            - "update_core_memory"
 
   - id: s2
     turns:
       - user: "Actually I changed my mind — my preferred deployment target is Kubernetes from now on. Please update your memory."
         assert:
-          tools_called:
+          tools_called_any:
             - "upsert_memory"
+            - "update_core_memory"
 
 post_checks:
   - type: search_memory

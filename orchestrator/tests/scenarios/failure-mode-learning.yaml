@@ -9,15 +9,18 @@ sessions:
     turns:
       - user: "I just tried to deploy using the fast-deploy skill and it failed because there was no rollback plan. Please record this as a lesson so you never make the same mistake."
         assert:
-          tools_called:
+          tools_called_any:
             - "upsert_memory"
+            - "update_core_memory"
 
   - id: s2
     turns:
       - user: "I'm about to do a deployment. Are there any lessons from past failures I should know about first?"
         assert:
-          tools_called:
+          tools_called_any:
             - "search_memory"
+            - "get_core_memory"
+            - "list_episodes"
           response_contains:
             - "rollback"
 

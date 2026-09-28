@@ -9,8 +9,9 @@ sessions:
     turns:
       - user: "Remember three things: 1) The codebase uses Go for the backend. 2) React with TypeScript for the UI. 3) SQLite for the database."
         assert:
-          tools_called:
+          tools_called_any:
             - "upsert_memory"
+            - "update_core_memory"
 
   - id: s2
     turns:

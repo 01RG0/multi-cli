@@ -515,6 +515,14 @@ function assertTurn(sessionId, turnIdx, result, assert) {
       }
     }
   }
+  if (assert.tools_called_any) {
+    // At least one of the listed tools must have been called
+    const anyMatch = assert.tools_called_any.some(tool => result.toolsCalled.some(t => t.name === tool));
+    if (!anyMatch) {
+      const called = result.toolsCalled.map(t => t.name).join(', ') || '(none)';
+      failures.push(`[${sessionId}/turn${turnIdx}] expected at least one of [${assert.tools_called_any.join(', ')}] to be called — tools called: ${called}`);
+    }
+  }
   if (assert.tools_not_called) {
     for (const tool of assert.tools_not_called) {
       if (result.toolsCalled.some(t => t.name === tool)) {
