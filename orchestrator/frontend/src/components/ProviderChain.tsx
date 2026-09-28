@@ -41,6 +41,26 @@ function fmt(n: number): string {
   return String(n);
 }
 
+// Normalize a provider name for fuzzy matching: lowercase, strip spaces/dashes/underscores
+function normName(s: string): string {
+  return s.toLowerCase().replace(/[\s\-_]/g, '');
+}
+
+function findStat(
+  stats: Record<string, ProviderStat>,
+  providerName: string,
+): ProviderStat | undefined {
+  const needle = normName(providerName);
+  // Exact normalized match first
+  const exact = Object.entries(stats).find(([k]) => normName(k) === needle);
+  if (exact) return exact[1];
+  // Substring match (e.g. "AWS Bedrock" ↔ "bedrock", "Alibaba DashScope" ↔ "dashscope")
+  const sub = Object.entries(stats).find(
+    ([k]) => needle.includes(normName(k)) || normName(k).includes(needle),
+  );
+  return sub?.[1];
+}
+
 function SortableProviderItem({ id, onClone, stats }: SortableProviderItemProps) {
   const { providers, updateProvider, setProviders } = useSwarmStore();
   const provider = providers.find(p => p.id === id);
@@ -61,10 +81,7 @@ function SortableProviderItem({ id, onClone, stats }: SortableProviderItemProps)
 
   if (!provider) return null;
 
-  // Match backend stat by provider name (case-insensitive)
-  const stat = Object.entries(stats).find(
-    ([k]) => k.toLowerCase() === provider.name.toLowerCase()
-  )?.[1];
+  const stat = findStat(stats, provider.name);
 
   const totalTokens = stat ? stat.input_tokens + stat.output_tokens : 0;
 
