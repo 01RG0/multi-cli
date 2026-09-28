@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -93,9 +94,13 @@ func TestCLIAgentRunStreaming(t *testing.T) {
 	// We can use a CLIAgent with binary "go" or "powershell" or "cmd" depending on OS
 	var a *agent.CLIAgent
 	var prompt string
-	a = agent.New("echoer", "cmd", 10*time.Second)
-	// /c echo hello
-	prompt = "/c echo hello stdout"
+	if runtime.GOOS == "windows" {
+		a = agent.New("echoer", "cmd", 10*time.Second)
+		prompt = "/c echo hello stdout"
+	} else {
+		a = agent.New("echoer", "sh", 10*time.Second)
+		prompt = "-c echo hello stdout"
+	}
 
 	var lines []string
 	var streams []string
