@@ -54,6 +54,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Upload dist artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: orchestrator/frontend/dist/
+
   deploy:
     name: Deploy & health check
     runs-on: ubuntu-latest
@@ -62,6 +69,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist-artifact/
+
+      - name: Copy dist to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: dist-artifact/
+          target: /home/rootuser/multi-cli/orchestrator/frontend/dist/
+          strip_components: 1
 
       - name: Deploy to server
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262  # v1.0.3
@@ -72,12 +95,8 @@ jobs:
           script: |
             set -e
             cd /home/rootuser/multi-cli
-            rm -f orchestrator/frontend/package-lock.json
             git pull origin main
-            cd orchestrator/frontend
-            npm ci
-            npm run build
-            cd ..
+            cd orchestrator
             go build -o orchestrator ./cmd/orchestrator/
             killall orchestrator 2>/dev/null || true
             sleep 1
