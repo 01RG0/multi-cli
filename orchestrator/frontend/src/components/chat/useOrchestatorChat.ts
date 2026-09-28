@@ -500,6 +500,19 @@ const ULTRON_TOOLS = [
       required: ['task_id'],
     },
   },
+  {
+    name: 'send_notification',
+    description: 'Send a notification that appears in the notification center. Use to alert the user when you complete something important, enhance yourself, finish a task, add a skill, or surface any important event.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title:   { type: 'string', description: 'Short notification title (max 60 chars)' },
+        message: { type: 'string', description: 'Notification body text' },
+        type:    { type: 'string', enum: ['success','info','warning','error','upgrade','autonomous'], description: 'Notification style. Use "upgrade" for self-enhancements.' },
+      },
+      required: ['title', 'message', 'type'],
+    },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -701,6 +714,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           const existing = JSON.parse(localStorage.getItem('ultron_pending_reminders') || '[]');
           existing.push({ text: msg, dueMs, label, createdMs: Date.now() });
           localStorage.setItem('ultron_pending_reminders', JSON.stringify(existing));
+          window.dispatchEvent(new CustomEvent('ultron:notify', { detail: { id: crypto.randomUUID(), type: 'info', title: 'Reminder scheduled', message: `Due: ${new Date(dueMs).toLocaleString()}`, ts: Date.now(), read: false, source: 'reminder' } }));
         } catch { /* ignore */ }
         return JSON.stringify({ ok: true, due_at: new Date(dueMs).toISOString(), label });
       }
@@ -746,6 +760,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           const entry = { name: skillName, description: skillDesc, content: content.slice(0, 8000), url, addedMs: Date.now() };
           if (existing >= 0) skills[existing] = entry; else skills.push(entry);
           localStorage.setItem('ultron_self_skills', JSON.stringify(skills));
+          window.dispatchEvent(new CustomEvent('ultron:notify', { detail: { id: crypto.randomUUID(), type: 'upgrade', title: `Skill added: ${skillName}`, message: skillDesc || url, ts: Date.now(), read: false, source: 'skill' } }));
           return JSON.stringify({ ok: true, name: skillName, content_length: content.length });
         } catch (e) {
           return JSON.stringify({ error: String(e) });
@@ -768,6 +783,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           const notes = JSON.parse(localStorage.getItem('ultron_memory_notes') || '[]');
           notes.push({ note, category, ts: Date.now(), id: Math.random().toString(36).slice(2, 8) });
           localStorage.setItem('ultron_memory_notes', JSON.stringify(notes));
+          window.dispatchEvent(new CustomEvent('ultron:notify', { detail: { id: crypto.randomUUID(), type: 'upgrade', title: 'Memory note saved', message: `[${category}] ${note.slice(0, 60)}`, ts: Date.now(), read: false, source: 'memory' } }));
           return JSON.stringify({ ok: true, total_notes: notes.length });
         } catch {
           return JSON.stringify({ ok: false, error: 'localStorage unavailable' });
@@ -797,6 +813,7 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         });
         if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
         const result = await r.json();
+        window.dispatchEvent(new CustomEvent('ultron:notify', { detail: { id: crypto.randomUUID(), type: 'autonomous', title: 'Autonomous task started', message: String(input['goal']).slice(0, 80), ts: Date.now(), read: false, source: 'autonomous_task' } }));
         return JSON.stringify({ ok: true, task_id: result.id, message: `Autonomous task started. You will receive step updates in this chat as the executor progresses.` });
       }
       case 'get_autonomous_tasks': {
@@ -813,6 +830,20 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const r = await fetch(`${BASE}/api/autonomous/tasks/${input['task_id'] as string}/resume`, { method: 'POST' });
         if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
         return JSON.stringify(await r.json());
+      }
+      case 'send_notification': {
+        window.dispatchEvent(new CustomEvent('ultron:notify', {
+          detail: {
+            id: crypto.randomUUID(),
+            type: (input['type'] as string) || 'info',
+            title: input['title'] as string,
+            message: input['message'] as string,
+            ts: Date.now(),
+            read: false,
+            source: 'ultron',
+          },
+        }));
+        return JSON.stringify({ ok: true });
       }
       default:
         return JSON.stringify({ error: `unknown tool: ${name}` });

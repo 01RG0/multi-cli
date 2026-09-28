@@ -215,6 +215,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/providers", s.handleProviderHealth)
 	mux.HandleFunc("/api/providers/stats", s.handleProviderStats)
 	mux.HandleFunc("/api/cli/models", s.handleCLIModels)
+	mux.HandleFunc("/api/notify", s.handleNotify)
 	mux.HandleFunc("/api/broadcast", s.handleBroadcast)
 
 	// Autonomous long-running task routes

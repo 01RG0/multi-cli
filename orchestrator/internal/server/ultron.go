@@ -1087,6 +1087,28 @@ func (s *Server) handleBroadcast(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
+// handleNotify broadcasts an arbitrary notification payload to all WS clients.
+// POST /api/notify
+func (s *Server) handleNotify(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "POST") {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	body["type"] = "notification"
+	body["ts"] = time.Now().UnixMilli()
+	s.Hub.Broadcast(body)
+	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
 func (s *Server) handleTableStats(w http.ResponseWriter, r *http.Request) {
 	corsJSON(w)
 	if handleCORSPreflight(w, r, "GET") {

@@ -91,6 +91,7 @@ func (e *Executor) tick(ctx context.Context) {
 			e.broadcast("autonomous_task_complete", map[string]any{
 				"task_id": t.ID, "goal": t.Goal, "status": "expired", "reason": "deadline exceeded",
 			})
+			e.broadcast("notification", map[string]any{"notif_type": "warning", "title": "Task expired: " + truncate(t.Goal, 40), "message": "deadline exceeded"})
 			continue
 		}
 		e.advanceTask(ctx, &t)
@@ -104,6 +105,7 @@ func (e *Executor) advanceTask(ctx context.Context, t *AutonomousTask) {
 			"task_id": t.ID, "goal": t.Goal, "status": "completed",
 			"steps_completed": t.TotalSteps,
 		})
+		e.broadcast("notification", map[string]any{"notif_type": "success", "title": "Task complete: " + truncate(t.Goal, 40), "message": fmt.Sprintf("%d steps completed", t.TotalSteps)})
 		return
 	}
 
@@ -177,6 +179,11 @@ func (e *Executor) advanceTask(ctx context.Context, t *AutonomousTask) {
 		"status":      statusLabel,
 		"result":      truncate(result, 200),
 		"progress":    fmt.Sprintf("%d/%d", t.CurrentStep, t.TotalSteps),
+	})
+	e.broadcast("notification", map[string]any{
+		"notif_type": "autonomous",
+		"title":      fmt.Sprintf("Step %d/%d: %s", t.CurrentStep, t.TotalSteps, truncate(step.Description, 35)),
+		"message":    fmt.Sprintf("status: %s", statusLabel),
 	})
 
 	// Continue advancing

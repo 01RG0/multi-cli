@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSwarmStore } from '../store/useSwarmStore';
 import { Zap, Activity, Clock, Plus, Terminal } from 'lucide-react';
+import { NotificationCenter } from './NotificationCenter';
 
 interface CockpitHeaderProps {
   onOpenCommandPalette: () => void;
@@ -70,6 +71,7 @@ export const CockpitHeader: React.FC<CockpitHeaderProps> = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-3">
+        <NotificationCenter />
         {/* Terminal Command Palette Trigger Button */}
         <button
           onClick={onOpenCommandPalette}
