@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,11 +15,13 @@ import (
 
 // ProviderStats tracks per-provider usage counters (all atomic, no lock needed).
 type ProviderStats struct {
-	Requests     atomic.Int64
-	InputTokens  atomic.Int64
-	OutputTokens atomic.Int64
-	Errors       atomic.Int64
-	LastUsedMs   atomic.Int64 // unix millis of last successful call
+	Requests       atomic.Int64
+	InputTokens    atomic.Int64
+	OutputTokens   atomic.Int64
+	Errors         atomic.Int64
+	LastUsedMs     atomic.Int64 // unix millis of last successful call
+	LastSuccessMs  atomic.Int64 // unix millis of last successful call
+	TotalLatencyMs atomic.Int64 // cumulative latency of successful calls (ms)
 }
 
 type Router struct {
@@ -32,6 +35,10 @@ type Router struct {
 
 	statsMu sync.RWMutex
 	stats   map[string]*ProviderStats
+
+	// tierMap stores each provider's model tier, populated by SortByTier.
+	// Used by RebuildChain so tier factors into live re-ranking.
+	tierMap map[string]int
 }
 
 func NewRouter(primary Provider, fallbacks []Provider, maxRetries int, cooldownSecs int) *Router {
@@ -42,6 +49,7 @@ func NewRouter(primary Provider, fallbacks []Provider, maxRetries int, cooldownS
 		cooldownTTL: time.Duration(cooldownSecs) * time.Second,
 		cooldowns:   make(map[string]time.Time),
 		stats:       make(map[string]*ProviderStats),
+		tierMap:     make(map[string]int),
 	}
 }
 
@@ -71,14 +79,63 @@ func (r *Router) AllStats() map[string]map[string]int64 {
 	out := make(map[string]map[string]int64, len(r.stats))
 	for name, s := range r.stats {
 		out[name] = map[string]int64{
-			"requests":      s.Requests.Load(),
-			"input_tokens":  s.InputTokens.Load(),
-			"output_tokens": s.OutputTokens.Load(),
-			"errors":        s.Errors.Load(),
-			"last_used_ms":  s.LastUsedMs.Load(),
+			"requests":         s.Requests.Load(),
+			"input_tokens":     s.InputTokens.Load(),
+			"output_tokens":    s.OutputTokens.Load(),
+			"errors":           s.Errors.Load(),
+			"last_used_ms":     s.LastUsedMs.Load(),
+			"last_success_ms":  s.LastSuccessMs.Load(),
+			"total_latency_ms": s.TotalLatencyMs.Load(),
 		}
 	}
 	return out
+}
+
+// providerScore computes a routing score for a provider (higher = preferred).
+// Score = successRate*10 + tier*0.5 - avgLatency*0.1
+// Must NOT hold r.mu (called from RebuildChain which holds r.mu).
+func (r *Router) providerScore(name string) float64 {
+	st := r.providerStats(name) // uses statsMu, not r.mu -- safe
+	reqs := st.Requests.Load()
+	errs := st.Errors.Load()
+
+	// Default to perfect score for untried providers so they get a chance.
+	successRate := 1.0
+	if reqs+errs > 0 {
+		successRate = float64(reqs) / float64(reqs+errs)
+	}
+
+	// Avg latency in seconds (default 1s for untried).
+	avgLatency := 1.0
+	if reqs > 0 {
+		avgLatency = float64(st.TotalLatencyMs.Load()) / float64(reqs) / 1000.0
+	}
+
+	tier := float64(r.tierMap[name]) // 0 for unknown, populated by SortByTier
+
+	return successRate*10.0 + tier*0.5 - avgLatency*0.1
+}
+
+// RebuildChain re-sorts the fallback chain by live score (success rate + tier - latency).
+// Called asynchronously after each provider failure so the chain adapts over time.
+func (r *Router) RebuildChain() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	all := make([]Provider, 0, 1+len(r.fallbacks))
+	if r.primary != nil {
+		all = append(all, r.primary)
+	}
+	all = append(all, r.fallbacks...)
+
+	sort.SliceStable(all, func(i, j int) bool {
+		return r.providerScore(all[i].Name()) > r.providerScore(all[j].Name())
+	})
+
+	if len(all) > 0 {
+		r.primary = all[0]
+		r.fallbacks = all[1:]
+	}
 }
 
 func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, error) {
@@ -99,12 +156,17 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 		var err error
 		for attempt := 0; attempt < r.maxRetries; attempt++ {
 			var resp ChatResponse
+			start := time.Now()
 			resp, err = p.Complete(ctx, req)
 			if err == nil {
+				elapsed := time.Since(start).Milliseconds()
+				now := time.Now().UnixMilli()
 				st.Requests.Add(1)
 				st.InputTokens.Add(int64(resp.Usage.InputTokens))
 				st.OutputTokens.Add(int64(resp.Usage.OutputTokens))
-				st.LastUsedMs.Store(time.Now().UnixMilli())
+				st.LastUsedMs.Store(now)
+				st.LastSuccessMs.Store(now)
+				st.TotalLatencyMs.Add(elapsed)
 				return resp, nil
 			}
 			if isRateLimit(err) || isTransient(err) {
@@ -120,11 +182,13 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 		st.Errors.Add(1)
 		// Only cooldown on rate-limit (429) or transient server errors (5xx).
 		// Format/capability errors (4xx) mean this provider is the wrong choice
-		// for this request type — skip it but don't penalize it for future requests.
+		// for this request type -- skip it but don't penalize it for future requests.
 		if isRateLimit(err) || isTransient(err) {
 			r.setCooldown(p.Name())
 		}
 		lastErr = err
+		// Re-rank so next request prefers working providers.
+		go r.RebuildChain()
 	}
 	if lastErr == nil {
 		return ChatResponse{}, fmt.Errorf("all providers cooling down")
@@ -145,14 +209,20 @@ func (r *Router) Stream(ctx context.Context, req ChatRequest) (<-chan StreamChun
 			continue
 		}
 		st := r.providerStats(p.Name())
+		start := time.Now()
 		ch, err := p.Stream(ctx, req)
 		if err == nil {
+			elapsed := time.Since(start).Milliseconds()
+			now := time.Now().UnixMilli()
 			st.Requests.Add(1)
-			st.LastUsedMs.Store(time.Now().UnixMilli())
+			st.LastUsedMs.Store(now)
+			st.LastSuccessMs.Store(now)
+			st.TotalLatencyMs.Add(elapsed)
 			return ch, nil
 		}
 		st.Errors.Add(1)
 		r.setCooldown(p.Name())
+		go r.RebuildChain()
 	}
 	return nil, fmt.Errorf("all providers unavailable for streaming")
 }
@@ -186,12 +256,12 @@ func isChatCapable(model string) bool {
 
 // SortByTier reorders the fallback chain so higher-tier providers come first.
 // Call this after ProbeModels to ensure the best models are tried first.
+// Also populates tierMap used by RebuildChain for live re-ranking.
 func (r *Router) SortByTier() {
 	type scored struct {
 		p    Provider
 		tier int
 	}
-	// Score primary + fallbacks together, then split back out
 	all := append([]Provider{r.primary}, r.fallbacks...)
 	scores := make([]scored, 0, len(all))
 	for _, p := range all {
@@ -200,6 +270,7 @@ func (r *Router) SortByTier() {
 		}
 		tier := ModelTier[p.Model()]
 		scores = append(scores, scored{p, tier})
+		r.tierMap[p.Name()] = tier
 	}
 	// Stable sort: higher tier first
 	for i := 1; i < len(scores); i++ {
@@ -214,7 +285,6 @@ func (r *Router) SortByTier() {
 			r.fallbacks[i] = s.p
 		}
 	}
-	// Log new order
 	for i, s := range scores {
 		tierStr := ""
 		if s.tier > 0 {
