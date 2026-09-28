@@ -29,12 +29,6 @@ providers:
     api_key: ${DAHL_API_KEY}
     model: deepseek-ai/DeepSeek-V4-Flash-0731
 
-  - name: cerebras
-    type: openai_compat
-    base_url: https://api.cerebras.ai/v1
-    api_key: ${CEREBRAS_API_KEY}
-    model: qwen-3.8-27b
-
   - name: mistral
     type: openai_compat
     base_url: https://api.mistral.ai/v1
@@ -52,12 +46,6 @@ providers:
     base_url: https://api.cohere.ai/compatibility/v1
     api_key: ${COHERE_API_KEY}
     model: command-r7b-12-2024
-
-  - name: apertis
-    type: openai_compat
-    base_url: ${APERTIS_BASE_URL}
-    api_key: ${APERTIS_API_KEY}
-    model: nemotron-3-ultra-550b-a55b:free
 
   - name: atessa
     type: openai_compat
@@ -110,7 +98,7 @@ providers:
     model: us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Primary provider + fallback order — free/cheap providers first; bedrock last (AWS-hosted Anthropic)
-fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, pooled, anyapi, apertis, dahl, groq, cerebras, openrouter, mistral, cohere, gemini, bedrock-haiku, bedrock]
+fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, pooled, anyapi, dahl, groq, openrouter, mistral, cohere, gemini, bedrock-haiku, bedrock]
 
 max_retries: 3
 cooldown_seconds: 60
@@ -152,12 +140,12 @@ agent_providers:
   grok:       [apmix, aihubmix, tokenharbor, groq, dahl]
   researcher: [apmix, tokenharbor, aihubmix, cohere, dahl]
   debugger:   [apmix, tokenharbor, aihubmix, groq, dahl]
-  vibe:       [apmix, aihubmix, tokenharbor, cerebras, dahl]
+  vibe:       [apmix, aihubmix, tokenharbor, dahl]
   jules:      [apmix, aihubmix, tokenharbor, gemini, dahl]
-  agy:        [apmix, aihubmix, tokenharbor, cerebras, dahl]
+  agy:        [apmix, aihubmix, tokenharbor, dahl]
   kilo:       [apmix, tokenharbor, aihubmix, groq, dahl]
   hermes:     [apmix, tokenharbor, aihubmix, mistral, dahl]
-  default:    [apmix, tokenharbor, aihubmix, dashscope, openrouter, dahl, groq, cerebras]
+  default:    [apmix, tokenharbor, aihubmix, dashscope, openrouter, dahl, groq]
 
 # Available CLI agents — command overrides absolute binary path on server
 # Agents without a command entry use the name looked up via PATH
