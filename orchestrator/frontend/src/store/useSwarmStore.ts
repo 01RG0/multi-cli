@@ -88,6 +88,8 @@ export interface Provider {
   name: string;
   apiKeyMasked: string;
   apiKey: string;
+  baseUrl?: string;
+  model?: string;
   latencyMs: number;
   latency: number; // Compatibility alias
   health: ProviderHealth;

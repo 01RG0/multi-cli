@@ -17,16 +17,17 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Eye, EyeOff, Plus, X, Zap, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { GripVertical, Eye, EyeOff, Plus, X, Zap, CheckCircle, XCircle, Loader, Copy, Trash2 } from 'lucide-react';
 
 type TestState = 'idle' | 'testing' | 'ok' | 'fail';
 
 interface SortableProviderItemProps {
   id: string;
+  onClone: (id: string) => void;
 }
 
-function SortableProviderItem({ id }: SortableProviderItemProps) {
-  const { providers, updateProvider } = useSwarmStore();
+function SortableProviderItem({ id, onClone }: SortableProviderItemProps) {
+  const { providers, updateProvider, setProviders } = useSwarmStore();
   const provider = providers.find(p => p.id === id);
   const [showKey, setShowKey] = useState(false);
   const [testState, setTestState] = useState<TestState>('idle');
@@ -62,11 +63,14 @@ function SortableProviderItem({ id }: SortableProviderItemProps) {
         updateProvider(provider.id, { health: 'red' });
       }
     } catch {
-      // Backend unreachable — mark red but don't throw
       setTestState('fail');
       updateProvider(provider.id, { health: 'red' });
     }
     setTimeout(() => setTestState('idle'), 4000);
+  };
+
+  const handleDelete = () => {
+    setProviders(providers.filter(p => p.id !== provider.id));
   };
 
   const healthColor =
@@ -77,7 +81,7 @@ function SortableProviderItem({ id }: SortableProviderItemProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 mb-2 bg-zinc-950 border border-zinc-800 text-zinc-100 hover:border-zinc-600 rounded-lg"
+      className="flex items-center gap-3 p-3 mb-2 bg-zinc-950 border border-zinc-800 text-zinc-100 hover:border-zinc-600 rounded-lg group"
     >
       <div
         ref={setActivatorNodeRef}
@@ -89,10 +93,15 @@ function SortableProviderItem({ id }: SortableProviderItemProps) {
       </div>
 
       <div className="flex-1 grid grid-cols-12 gap-3 items-center min-w-0">
-        <div className="col-span-3 font-medium text-white text-sm truncate">
-          {provider.name}
+        {/* Name + model tag */}
+        <div className="col-span-3 min-w-0">
+          <div className="font-medium text-white text-sm truncate">{provider.name}</div>
+          {provider.model && (
+            <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">{provider.model}</div>
+          )}
         </div>
 
+        {/* API key */}
         <div className="col-span-4 flex items-center gap-2 min-w-0">
           <div className="bg-black border border-zinc-800 text-zinc-300 font-mono text-xs px-2.5 py-1.5 rounded flex-1 min-w-0 flex items-center justify-between gap-1">
             <span className="truncate">{showKey ? (provider.apiKey || 'Stored in .env') : provider.apiKeyMasked}</span>
@@ -102,6 +111,7 @@ function SortableProviderItem({ id }: SortableProviderItemProps) {
           </div>
         </div>
 
+        {/* Latency */}
         <div className="col-span-2 flex items-center gap-1.5 text-xs text-zinc-400">
           <div className={`w-2 h-2 rounded-full shrink-0 ${healthColor}`} />
           <span className="tabular-nums">{testedLatency ?? provider.latency}ms</span>
@@ -132,7 +142,26 @@ function SortableProviderItem({ id }: SortableProviderItemProps) {
           </button>
         </div>
 
-        <div className="col-span-2 flex justify-end">
+        {/* Enabled toggle */}
+        <div className="col-span-2 flex justify-end items-center gap-2">
+          {/* Clone button — always visible on hover */}
+          <button
+            onClick={() => onClone(provider.id)}
+            title="Clone provider (same key, new model)"
+            className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-blue-400 transition-all p-1 rounded"
+          >
+            <Copy size={13} />
+          </button>
+
+          {/* Delete button */}
+          <button
+            onClick={handleDelete}
+            title="Remove provider"
+            className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all p-1 rounded"
+          >
+            <Trash2 size={13} />
+          </button>
+
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -154,6 +183,7 @@ export default function ProviderChain() {
   const [newName, setNewName] = useState('');
   const [newKey, setNewKey] = useState('');
   const [newUrl, setNewUrl] = useState('');
+  const [newModel, setNewModel] = useState('');
 
   React.useEffect(() => {
     fetch('/health')
@@ -169,6 +199,32 @@ export default function ProviderChain() {
       .catch(() => {});
   }, []);
 
+  const openAddForm = (prefill?: { name: string; key: string; url: string; model: string }) => {
+    if (prefill) {
+      setNewName(prefill.name);
+      setNewKey(prefill.key);
+      setNewUrl(prefill.url);
+      setNewModel(prefill.model);
+    } else {
+      setNewName(''); setNewKey(''); setNewUrl(''); setNewModel('');
+    }
+    setShowAddForm(true);
+  };
+
+  const handleClone = (id: string) => {
+    const src = providers.find(p => p.id === id);
+    if (!src) return;
+    // Suggest a clone name like "openrouter-2"
+    const base = src.name.replace(/-\d+$/, '');
+    const idx = providers.filter(p => p.name.startsWith(base)).length + 1;
+    openAddForm({
+      name: `${base}-${idx}`,
+      key: src.apiKey || '',
+      url: src.baseUrl || '',
+      model: src.model || '',
+    });
+  };
+
   const handleAddProvider = () => {
     if (!newName.trim()) return;
     const key = newKey.trim();
@@ -180,6 +236,8 @@ export default function ProviderChain() {
       name: newName.trim(),
       apiKeyMasked: masked,
       apiKey: key,
+      baseUrl: newUrl.trim() || undefined,
+      model: newModel.trim() || undefined,
       latencyMs: 200,
       latency: 200,
       health: (key ? 'green' : 'amber') as 'green' | 'amber' | 'red',
@@ -187,7 +245,7 @@ export default function ProviderChain() {
       cooldownUntil: null,
     };
     setProviders([...providers, newProvider]);
-    setNewName(''); setNewKey(''); setNewUrl(''); setShowAddForm(false);
+    setNewName(''); setNewKey(''); setNewUrl(''); setNewModel(''); setShowAddForm(false);
   };
 
   const sensors = useSensors(
@@ -199,7 +257,6 @@ export default function ProviderChain() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
     if (active.id !== over?.id) {
       const oldIndex = providers.findIndex(p => p.id === active.id);
       const newIndex = providers.findIndex(p => p.id === over?.id);
@@ -213,57 +270,73 @@ export default function ProviderChain() {
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-xl font-bold text-white">PROVIDER CHAIN</h2>
           <button
-            onClick={() => setShowAddForm(v => !v)}
+            onClick={() => showAddForm ? setShowAddForm(false) : openAddForm()}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white text-xs font-mono rounded transition"
           >
             {showAddForm ? <X size={13} /> : <Plus size={13} />}
             {showAddForm ? 'Cancel' : 'Add Provider'}
           </button>
         </div>
-        <p className="text-sm text-zinc-400 mb-4">Fallback Hierarchy · {providers.length} configured</p>
+        <p className="text-sm text-zinc-400 mb-4">
+          Fallback Hierarchy · {providers.length} configured
+          <span className="ml-2 text-zinc-600 text-xs">Hover a row → Clone to add another model on the same key</span>
+        </p>
 
         {showAddForm && (
-          <div className="mb-4 p-4 bg-zinc-950 border border-zinc-700 rounded-lg flex flex-wrap gap-3 items-end">
-            <div className="flex flex-col gap-1 flex-1 min-w-32">
-              <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Name *</label>
-              <input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="e.g. Together AI"
-                className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-              />
+          <div className="mb-4 p-4 bg-zinc-950 border border-zinc-700 rounded-lg space-y-3">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex flex-col gap-1 flex-1 min-w-32">
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Name *</label>
+                <input
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="e.g. openrouter-strong"
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-w-40">
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wider">API Key</label>
+                <input
+                  value={newKey}
+                  onChange={e => setNewKey(e.target.value)}
+                  placeholder="sk-..."
+                  type="password"
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
             </div>
-            <div className="flex flex-col gap-1 flex-1 min-w-40">
-              <label className="text-[10px] text-zinc-500 uppercase tracking-wider">API Key</label>
-              <input
-                value={newKey}
-                onChange={e => setNewKey(e.target.value)}
-                placeholder="sk-..."
-                type="password"
-                className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-              />
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex flex-col gap-1 flex-1 min-w-40">
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Base URL (optional)</label>
+                <input
+                  value={newUrl}
+                  onChange={e => setNewUrl(e.target.value)}
+                  placeholder="https://openrouter.ai/api/v1"
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-w-40">
+                <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Model (optional)</label>
+                <input
+                  value={newModel}
+                  onChange={e => setNewModel(e.target.value)}
+                  placeholder="e.g. anthropic/claude-opus-4"
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+              <button
+                onClick={handleAddProvider}
+                disabled={!newName.trim()}
+                className="px-4 py-1.5 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-600 text-black text-xs font-bold rounded transition"
+              >
+                Add
+              </button>
             </div>
-            <div className="flex flex-col gap-1 flex-1 min-w-40">
-              <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Base URL (optional)</label>
-              <input
-                value={newUrl}
-                onChange={e => setNewUrl(e.target.value)}
-                placeholder="https://api.example.com/v1"
-                className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-              />
-            </div>
-            <button
-              onClick={handleAddProvider}
-              disabled={!newName.trim()}
-              className="px-4 py-1.5 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-600 text-black text-xs font-bold rounded transition"
-            >
-              Add
-            </button>
           </div>
         )}
 
         <div className="grid grid-cols-12 gap-3 px-10 pb-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-          <div className="col-span-3">Provider</div>
+          <div className="col-span-3">Provider / Model</div>
           <div className="col-span-4">API Key</div>
           <div className="col-span-2">Latency</div>
           <div className="col-span-1 text-center">Test</div>
@@ -280,7 +353,7 @@ export default function ProviderChain() {
             strategy={verticalListSortingStrategy}
           >
             {providers.map((provider) => (
-              <SortableProviderItem key={provider.id} id={provider.id} />
+              <SortableProviderItem key={provider.id} id={provider.id} onClone={handleClone} />
             ))}
           </SortableContext>
         </DndContext>
