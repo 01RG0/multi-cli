@@ -618,12 +618,14 @@ export const SwarmRadialTopology: React.FC = () => {
               // tier 2 = live hit  → brief flash
               // tier 3 = waiting   → slow pulse
               // tier 4 = idle      → ambient ghost only (always visible)
-              const tier = isSel ? 0 : isRunning ? 1 : isLive ? 2 : isWaiting ? 3 : 4;
+              // Particles only fire when there is real data flow — idle selection never shows moving particles
+              const tier = (isSel && isRunning) ? 0 : isRunning ? 1 : isLive ? 2 : isWaiting ? 3 : 4;
+              const isSelIdle = isSel && !isRunning && !isLive;
 
-              const lineW   = [2.2, 1.8, 1.0, 0.6, 0.35][tier];
-              const lineOp  = [0.95, 0.85, 0.55, 0.22, 0.06][tier];
-              const glowW   = [14, 12, 5, 3, 0][tier];
-              const glowOp  = [0.055, 0.08, 0.04, 0.02, 0][tier];
+              const lineW   = isSelIdle ? 1.6  : [2.2, 1.8, 1.0, 0.6, 0.35][tier];
+              const lineOp  = isSelIdle ? 0.55 : [0.95, 0.85, 0.55, 0.22, 0.06][tier];
+              const glowW   = isSelIdle ? 8    : [14, 12, 5, 3, 0][tier];
+              const glowOp  = isSelIdle ? 0.04 : [0.055, 0.08, 0.04, 0.02, 0][tier];
               const dur     = (isSel ? 1.05 : 1.6) + (i % 4) * 0.3;
 
               return (
@@ -660,12 +662,12 @@ export const SwarmRadialTopology: React.FC = () => {
                       <animateMotion dur={`${dur}s`} begin={`${begin}s`} repeatCount="indefinite" path={fwd} />
                     </circle>
                   ))}
-                  {/* Return flow for selected running agents */}
-                  {tier === 0 && isRunning && [0, dur * 0.52].map((begin, pi) => (
+                  {/* Return flow: Ultron always sends response back to agent */}
+                  {tier === 0 && [0, dur * 0.52].map((begin, pi) => (
                     <circle key={`ret-${pi}`}
-                      r={pi === 0 ? 4 : 2.5} fill="#a78bfa"
-                      opacity={0.85 - pi * 0.2} filter={pi === 0 ? 'url(#gs)' : undefined}>
-                      <animateMotion dur={`${dur * 1.35}s`} begin={`${begin}s`}
+                      r={pi === 0 ? 4.5 : 2.8} fill="#fb923c"
+                      opacity={0.9 - pi * 0.2} filter={pi === 0 ? 'url(#gs)' : undefined}>
+                      <animateMotion dur={`${dur * 1.25}s`} begin={`${begin}s`}
                         repeatCount="indefinite" path={rev} />
                     </circle>
                   ))}
@@ -685,18 +687,24 @@ export const SwarmRadialTopology: React.FC = () => {
                       <circle r={2.5} fill="#fff" opacity={0.6} filter="url(#gs)">
                         <animateMotion dur={`${dur}s`} begin={`${i * 0.12 + dur * 0.48}s`} repeatCount="indefinite" path={fwd} />
                       </circle>
-                      {/* return pulse for running non-selected agents */}
-                      <circle r={2} fill="#a78bfa" opacity={0.5}>
-                        <animateMotion dur={`${dur * 1.5}s`} begin={`${i * 0.08}s`} repeatCount="indefinite" path={rev} />
+                      {/* Ultron return response to agent */}
+                      <circle r={2.8} fill="#fb923c" opacity={0.75} filter="url(#gs)">
+                        <animateMotion dur={`${dur * 1.4}s`} begin={`${i * 0.08 + dur * 0.6}s`} repeatCount="indefinite" path={rev} />
                       </circle>
                     </>
                   )}
 
-                  {/* tier 2: live flash — single bright burst */}
+                  {/* tier 2: live flash — forward burst + Ultron return */}
                   {tier === 2 && (
-                    <circle r={3} fill={color} opacity={0.9} filter="url(#gs)">
-                      <animateMotion dur={`${dur}s`} begin={`${i * 0.18}s`} repeatCount="indefinite" path={fwd} />
-                    </circle>
+                    <>
+                      <circle r={3} fill={color} opacity={0.9} filter="url(#gs)">
+                        <animateMotion dur={`${dur}s`} begin={`${i * 0.18}s`} repeatCount="indefinite" path={fwd} />
+                      </circle>
+                      {/* Ultron always sends back a response */}
+                      <circle r={2} fill="#fb923c" opacity={0.6}>
+                        <animateMotion dur={`${dur * 1.4}s`} begin={`${i * 0.22 + dur * 0.5}s`} repeatCount="indefinite" path={rev} />
+                      </circle>
+                    </>
                   )}
                 </g>
               );

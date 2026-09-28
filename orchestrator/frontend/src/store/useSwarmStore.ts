@@ -785,13 +785,20 @@ class SwarmWebSocketEngine {
         this.reconnectDelay = 3000;
         this.setStoreStatus('connected');
 
-        // Real backend connected: yield simulation
+        // Real backend connected: stop simulation and purge all fake sim data
         this.simulator.stop();
 
         this.batcher.enqueue((state) => ({
           isSimulating: false,
+          // Drop all fake sim tasks (they have numeric IDs or are from newPromptPool)
+          tasks: state.tasks.filter((t) =>
+            // Keep only tasks that look like real backend IDs (long numeric snowflake IDs)
+            /^\d{15,}-\d+$/.test(t.id) || t.id.startsWith('task-real')
+          ),
+          // Reset all agents to idle — real status fetched below
+          agents: state.agents.map((ag) => ({ ...ag, status: 'idle' as const, activeBeam: false, currentTaskId: null })),
           logs: [
-            ...state.logs,
+            ...state.logs.filter((l) => l.agent !== 'system' && !l.message?.includes('simulated')),
             {
               id: generateId('ws-log'),
               timestamp: formatTimestamp(),
