@@ -98,7 +98,7 @@ jobs:
             git pull origin main
             cd orchestrator
             go build -o orchestrator ./cmd/orchestrator/
-            killall orchestrator 2>/dev/null || true
+            fuser -k 8080/tcp 2>/dev/null || true
             sleep 1
             nohup ./start.sh > /tmp/orchestrator.log 2>&1 &
             sleep 5
