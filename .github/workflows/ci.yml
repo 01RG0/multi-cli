@@ -72,7 +72,7 @@ jobs:
           script: |
             set -e
             cd /home/rootuser/multi-cli
-            git checkout orchestrator/frontend/package-lock.json 2>/dev/null || true
+            rm -f orchestrator/frontend/package-lock.json
             git pull origin main
             cd orchestrator/frontend
             npm ci
