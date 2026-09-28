@@ -907,7 +907,17 @@ class SwarmWebSocketEngine {
           .then((r) => r.ok ? r.json() : null)
           .then((data) => {
             if (Array.isArray(data)) {
-              this.batcher.enqueue(() => ({ tasks: data }));
+              const normalized = data.map((t: Record<string, unknown>) => createTask({
+                id: (t.ID || t.id) as string,
+                agentId: (t.AgentID || t.agentId || 'unknown') as string,
+                agentName: (t.AgentID || t.agentId || 'unknown') as string,
+                prompt: (t.Prompt || t.prompt || '') as string,
+                status: ((t.Status || t.status || 'pending') as TaskStatus),
+                priority: (t.Priority ?? t.priority ?? 5) as number,
+                latencyMs: 0,
+                createdAt: formatTimestamp(),
+              }));
+              this.batcher.enqueue(() => ({ tasks: normalized }));
             }
           })
           .catch((e) => console.error('fetchInitialTasks:', e));
