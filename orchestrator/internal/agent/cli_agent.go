@@ -12,8 +12,22 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// modelCounters tracks round-robin position per agent name.
+var modelCounters sync.Map // map[string]*atomic.Uint64
+
+// nextModel returns the next model in a rotation list for the given agent name.
+func nextModel(agentName string, models []string) string {
+	if len(models) == 0 {
+		return ""
+	}
+	v, _ := modelCounters.LoadOrStore(agentName, new(atomic.Uint64))
+	idx := v.(*atomic.Uint64).Add(1) - 1
+	return models[idx%uint64(len(models))]
+}
 
 // LineCallback is called for each line of output produced by RunStreaming.
 // agentID is the agent name, taskID is the task being executed,
@@ -50,8 +64,16 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "vibe":
 		a.args = []string{"--auto-approve", "-p"}
 	case "agy", "researcher", "debugger":
-		// Google AI Pro account — use strongest available Gemini model
-		a.args = []string{"--dangerously-skip-permissions", "--print", "--model", "gemini-3.8-flash-high"}
+		// Google AI Pro — round-robin through all available models, strongest first
+		agentModels := []string{
+			"claude-opus-4-6-thinking",
+			"gpt-oss-120b-medium",
+			"claude-sonnet-4-6",
+			"gemini-3.1-pro-high",
+			"gemini-3.8-flash-high",
+		}
+		model := nextModel(name, agentModels)
+		a.args = []string{"--dangerously-skip-permissions", "--print", "--model", model}
 	case "hermes":
 		if a.binary == "" {
 			a.binary = "hermes"
