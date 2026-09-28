@@ -141,9 +141,13 @@ func ScoreModelName(name string) int {
 		score += 20
 	}
 
-	// Non-chat models: safety/embedding/speech/image — skip for routing
+	// Non-chat models: safety/embedding/speech/image/live-streaming — skip for routing.
+	// "live"/"bidi"/"realtime" matter because auto-discovery otherwise selects
+	// Gemini Live-only models (e.g. gemini-3.8-live-extended-thinking), which
+	// refuse plain generateContent calls with HTTP 400.
 	if containsAny(n, "guard", "safety", "embed", "moderat", "asr", "tts",
-		"transcribe", "realtime", "image", "vision", "ocr", "rerank", "parse") {
+		"transcribe", "realtime", "live", "bidi", "audio", "speech", "whisper",
+		"image", "vision", "ocr", "rerank", "parse") {
 		score -= 20
 	}
 

@@ -37,6 +37,9 @@ type ChatResponse struct {
 	FinishReason string     `json:"finish_reason"` // "stop" | "tool_use" | "length"
 	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
 	Usage        Usage      `json:"usage"`
+	// Provider is the name of the provider that served this response.
+	// Populated by Router.Complete (empty for direct provider calls).
+	Provider string `json:"provider,omitempty"`
 }
 
 type Usage struct {

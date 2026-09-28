@@ -10,6 +10,8 @@ providers:
     base_url: ${TOKEN_HARBOR_BASE_URL}
     api_key: ${TOKEN_HARBOR_API_KEY}
     model: deepseek-v4.1-flash:free
+    # ⚠️ 2026-09-29 probe: this base_url returns an HTML landing page (Vercel), not
+    # an OpenAI API — every call fails. Fix the URL or drop it from the chain.
 
   - name: aihubmix
     type: openai_compat
@@ -59,23 +61,29 @@ providers:
     api_key: ${POOLED_API_KEY}
     model: MiniMax-M3-Official
 
-  - name: minimax-m2.7
-    type: openai_compat
-    base_url: 
-    api_key: 
-    model: MiniMax-M2.7-Official
-
-  - name: minimax-m2.5
-    type: openai_compat
-    base_url: 
-    api_key: 
-    model: MiniMax-M2.5-Official
+  # ⚠️ DISABLED 2026-09-29 — these two had no base_url / api_key, so every call
+  # failed instantly with `Post "/v1/chat/completions": unsupported protocol scheme ""`
+  # and still consumed a slot in the fallback chain. Re-enable only with a real
+  # base_url + key (POOLED_BASE_URL serves MiniMax-M3-Official; M2.x is unverified).
+  # - name: minimax-m2.7
+  #   type: openai_compat
+  #   base_url: ${POOLED_BASE_URL}
+  #   api_key: ${POOLED_API_KEY}
+  #   model: MiniMax-M2.7-Official
+  #
+  # - name: minimax-m2.5
+  #   type: openai_compat
+  #   base_url: ${POOLED_BASE_URL}
+  #   api_key: ${POOLED_API_KEY}
+  #   model: MiniMax-M2.5-Official
 
   - name: anyapi
     type: openai_compat
     base_url: ${ANYAPI_BASE_URL}
     api_key: ${ANYAPI_API_KEY}
     model: nvidia/nemotron-3-ultra-550b-a55b:free
+    # ⚠️ 2026-09-29 probe: "RBAC: access denied" — this key has no access to the
+    # requested model/route. Re-check the plan or drop it from the chain.
 
   - name: dashscope
     type: openai_compat
@@ -101,6 +109,9 @@ providers:
     access_key: ${AWS_ACCESS_KEY_ID}
     secret_key: ${AWS_SECRET_ACCESS_KEY}
     model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
+    # ⚠️ 2026-09-29 probe: SigV4 "signature we calculated does not match the
+    # signature you provided" — AWS_SECRET_ACCESS_KEY is wrong or rotated.
+    # Re-issue credentials before expecting Bedrock to serve traffic.
 
   - name: bedrock-haiku
     type: bedrock
@@ -108,9 +119,18 @@ providers:
     access_key: ${AWS_ACCESS_KEY_ID}
     secret_key: ${AWS_SECRET_ACCESS_KEY}
     model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    # ⚠️ same SigV4 signature failure as `bedrock` above.
 
-# Primary provider + fallback order — free/cheap providers first; bedrock last (AWS-hosted Anthropic)
-fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, minimax-m3, minimax-m2.7, minimax-m2.5, anyapi, dahl, groq, openrouter, mistral, cohere, gemini, bedrock-haiku, bedrock]
+# Primary provider + fallback order.
+# Order still matters: FallbackChain[0] is the primary provider; the rest are
+# candidates that SortByTier()/RebuildChain() re-rank at runtime.
+# Verified 2026-09-29 with POST /api/providers/test — every provider whose
+# base_url ends in "/v1" used to fail with /v1/v1/chat/completions (fixed in
+# internal/provider/openai.go). groq, apmix, aihubmix, dahl, mistral, openrouter,
+# cohere, atessa, dashscope and minimax-m3 respond once that bug is fixed.
+# Providers flagged ⚠️ above are kept at the tail: fixing their key/base_url
+# brings them back without editing this line.
+fallback_chain: [groq, apmix, aihubmix, dashscope, atessa, minimax-m3, dahl, openrouter, mistral, cohere, gemini, tokenharbor, anyapi, bedrock-haiku, bedrock]
 
 max_retries: 3
 cooldown_seconds: 60
@@ -118,6 +138,11 @@ cooldown_seconds: 60
 # Proxy server (set port > 0 to enable; then set ANTHROPIC_BASE_URL=http://localhost:8080)
 proxy_port: 8080
 proxy_log: true
+
+# Budget for one /v1/messages request across the whole provider fallback chain.
+# Must stay below the HTTP server WriteTimeout (180s) so a slow chain returns a
+# readable JSON error instead of a truncated gateway response.
+request_timeout_seconds: 90
 
 # SQLite database path
 db_path: orchestrator.db
@@ -145,19 +170,22 @@ tools:
 # Per-agent provider chains — each CLI agent routes through its own ordered list.
 # Empty or missing entry falls back to the global fallback_chain.
 agent_providers:
-  codex:      [apmix, tokenharbor, aihubmix, mistral, dahl]
-  cursor:     [apmix, tokenharbor, aihubmix, dashscope, dahl]
-  cline:      [apmix, aihubmix, tokenharbor, mistral, dahl]
-  opencode:   [apmix, tokenharbor, aihubmix, dashscope, dahl]
-  grok:       [apmix, aihubmix, tokenharbor, groq, dahl]
-  researcher: [apmix, tokenharbor, aihubmix, cohere, dahl]
-  debugger:   [apmix, tokenharbor, aihubmix, groq, dahl]
-  vibe:       [apmix, aihubmix, tokenharbor, dahl]
-  jules:      [apmix, aihubmix, tokenharbor, gemini, dahl]
-  agy:        [apmix, aihubmix, tokenharbor, dahl]
-  kilo:       [apmix, tokenharbor, aihubmix, groq, dahl]
-  hermes:     [apmix, tokenharbor, aihubmix, mistral, dahl]
-  default:    [apmix, tokenharbor, aihubmix, dashscope, openrouter, dahl, groq]
+  codex:      [apmix, groq, aihubmix, mistral, dahl]
+  cursor:     [apmix, groq, aihubmix, dashscope, dahl]
+  cline:      [apmix, aihubmix, groq, mistral, dahl]
+  opencode:   [apmix, groq, aihubmix, dashscope, dahl]
+  grok:       [apmix, aihubmix, dashscope, groq, dahl]
+  researcher: [apmix, groq, aihubmix, cohere, dahl]
+  debugger:   [apmix, dashscope, aihubmix, groq, dahl]
+  vibe:       [apmix, aihubmix, groq, dahl]
+  jules:      [apmix, aihubmix, groq, gemini, dahl]
+  agy:        [apmix, aihubmix, groq, dahl]
+  kilo:       [apmix, dashscope, aihubmix, groq, dahl]
+  hermes:     [apmix, aihubmix, groq, mistral, dahl]
+  default:    [apmix, groq, aihubmix, dashscope, openrouter, dahl]
+# tokenharbor -> groq in every agent chain: tokenharbor's endpoint serves an HTML
+# page instead of an OpenAI API, so it failed every agent request (verified
+# 2026-09-29 via POST /api/providers/test).
 
 # Available CLI agents — command overrides absolute binary path on server
 # Agents without a command entry use the name looked up via PATH

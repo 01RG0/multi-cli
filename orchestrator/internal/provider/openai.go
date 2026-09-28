@@ -34,6 +34,21 @@ func NewOpenAI(name, baseURL, apiKey, model string) *OpenAIProvider {
 func (p *OpenAIProvider) Name() string  { return p.name }
 func (p *OpenAIProvider) Model() string { return p.model }
 
+// apiURL joins a provider base URL with an OpenAI-style API path.
+// Most providers are configured with a base URL that already carries the API
+// version ("https://api.apmix.ai/v1"), so blindly appending "/v1/chat/completions"
+// produced "/v1/v1/chat/completions" -> HTTP 404 from every such provider
+// ("Cannot POST /v1/v1/chat/completions"). Collapse the duplicated version
+// segment while leaving bases without a version untouched (e.g. Groq's
+// "https://api.groq.com/openai" still becomes ".../openai/v1/chat/completions").
+func apiURL(baseURL, path string) string {
+	base := strings.TrimRight(baseURL, "/")
+	if base != "" && strings.HasSuffix(base, "/v1") && strings.HasPrefix(path, "/v1/") {
+		return base + strings.TrimPrefix(path, "/v1")
+	}
+	return base + path
+}
+
 // SetModel updates the default model used when ChatRequest.Model is empty.
 func (p *OpenAIProvider) SetModel(model string) { p.model = model }
 
@@ -45,7 +60,7 @@ type modelsResponse struct {
 
 // ListModels fetches available model IDs from the provider's /v1/models endpoint.
 func (p *OpenAIProvider) ListModels(ctx context.Context) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL(p.baseURL, "/v1/models"), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +212,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ChatRequest) (ChatRes
 	}
 
 	data, _ := json.Marshal(body)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL(p.baseURL, "/v1/chat/completions"), bytes.NewReader(data))
 	if err != nil {
 		return ChatResponse{}, err
 	}
@@ -264,7 +279,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 	}
 
 	data, _ := json.Marshal(body)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL(p.baseURL, "/v1/chat/completions"), bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}

@@ -656,6 +656,47 @@ const ULTRON_TOOLS = [
 
 const BASE = '';
 
+// Hard ceiling on one chat round-trip. The backend answers within
+// request_timeout_seconds (90s) across the whole provider chain, so anything
+// beyond this is a stalled connection we should surface instead of hanging.
+const REQUEST_TIMEOUT_MS = 150_000;
+
+// describeGatewayError turns a non-2xx /v1/messages body into something readable.
+// Cloudflare rewrites an origin error body with its own HTML page, so the chat
+// used to show "HTTP 502: <!DOCTYPE html>…" and blame the backend, when the
+// backend was healthy and provider routing was what failed.
+function describeGatewayError(status: number, body: string): string {
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        error?: { message?: string; providers?: Array<{ provider?: string; error?: string }> };
+      };
+      const message = parsed.error?.message;
+      if (message) {
+        const providers = parsed.error?.providers ?? [];
+        const detail = providers
+          .map((p) => `\n- ${p.provider ?? 'provider'}: ${(p.error ?? '').slice(0, 200)}`)
+          .join('');
+        return `Backend routing failed (HTTP ${status}): ${message}${detail}`;
+      }
+    } catch {
+      // not JSON — fall through to generic handling
+    }
+  }
+  if (/^<(!doctype|html)/i.test(trimmed)) {
+    return `Backend returned HTTP ${status} as an HTML gateway page (Cloudflare): the orchestrator is reachable, but provider routing failed. Check journalctl -u orchestrator on the server.`;
+  }
+  return `Backend returned HTTP ${status}: ${trimmed.slice(0, 400)}`;
+}
+
+// isNetworkFailure distinguishes "could not reach the backend at all" from
+// "the backend answered with an error".
+function isNetworkFailure(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  return /failed to fetch|networkerror|load failed|fetch failed/i.test(String(err));
+}
+
 // Cap large tool results so they don't bloat the conversation context and cause OOM.
 function capToolResult(result: string, maxChars = 4000): string {
   if (result.length <= maxChars) return result;
@@ -1553,6 +1594,12 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
 
           const callStartMs = Date.now();
           let response: ApiResponse;
+          let servingProvider = '';
+          let timedOut = false;
+          const timeoutId: ReturnType<typeof setTimeout> = setTimeout(() => {
+            timedOut = true;
+            abortController.abort();
+          }, REQUEST_TIMEOUT_MS);
           try {
             const res = await fetch(`${BASE}/v1/messages`, {
               method:  'POST',
@@ -1562,17 +1609,24 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             });
             if (!res.ok) {
               const errText = await res.text();
-              throw new Error(`HTTP ${res.status}: ${errText}`);
+              throw new Error(describeGatewayError(res.status, errText));
             }
+            servingProvider = res.headers.get('X-Ultron-Provider') ?? '';
             response = (await res.json()) as ApiResponse;
           } catch (fetchErr: unknown) {
-            if (abortController.signal.aborted) break;
+            // A new message aborts the previous request — stay silent for that.
+            if (abortController.signal.aborted && !timedOut) break;
             const errMsgId = uid();
+            const failureText = timedOut
+              ? `Request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s — the provider chain never answered.`
+              : isNetworkFailure(fetchErr)
+                ? `Backend unreachable: ${String(fetchErr)}. Is the orchestrator running on :8080?`
+                : String(fetchErr);
             const errMsg: ChatMessage = {
               id:        errMsgId,
               key:       errMsgId,
               role:      'assistant',
-              content:   `Connection error: ${String(fetchErr)}. Is the backend running on :8080?`,
+              content:   failureText,
               timestamp: Date.now(),
               status:    'error',
             };
@@ -1581,6 +1635,8 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
               [currentSessionId]: [...(prev[currentSessionId] || []), errMsg],
             }));
             break;
+          } finally {
+            clearTimeout(timeoutId);
           }
 
           const latencyMs = Date.now() - callStartMs;
@@ -1606,7 +1662,7 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
               status:    'done',
               usage:     response.usage,
               latencyMs,
-              model:     'claude-sonnet-4-6',
+              model:     servingProvider || 'claude-sonnet-4-6',
             };
             setMessagesBySession((prev) => ({
               ...prev,

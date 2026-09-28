@@ -99,9 +99,17 @@ jobs:
             git reset --hard origin/main
             cd orchestrator
             go build -o orchestrator ./cmd/orchestrator/
-            fuser -k 8080/tcp 2>/dev/null || true
-            sleep 1
-            nohup ./start.sh > /tmp/orchestrator.log 2>&1 &
+            # The server runs the orchestrator under systemd
+            # (orchestrator.service, Restart=always). Restart that unit instead of
+            # spawning a second nohup process that fights the unit for port 8080
+            # (that conflict used to leave the proxy down until a manual restart).
+            if systemctl cat orchestrator.service >/dev/null 2>&1; then
+              sudo -n systemctl restart orchestrator
+            else
+              fuser -k 8080/tcp 2>/dev/null || true
+              sleep 1
+              nohup ./start.sh > /tmp/orchestrator.log 2>&1 &
+            fi
             sleep 5
 
       - name: Health check

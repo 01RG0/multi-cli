@@ -61,6 +61,8 @@ type Config struct {
 	EpisodeMaxRows             int `yaml:"episode_max_rows"`               // default 10000
 	EpisodeMaxAgeDays          int `yaml:"episode_max_age_days"`           // default 90
 
+	RequestTimeoutSeconds int `yaml:"request_timeout_seconds"`
+
 	// AgentProviders maps agent names to ordered provider preference lists.
 	// Empty or missing entry means use the global FallbackChain.
 	AgentProviders map[string][]string `yaml:"agent_providers"`
@@ -147,6 +149,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.EpisodeMaxAgeDays == 0 {
 		cfg.EpisodeMaxAgeDays = 90
+	}
+	if cfg.RequestTimeoutSeconds == 0 {
+		cfg.RequestTimeoutSeconds = 90
 	}
 	return &cfg, nil
 }

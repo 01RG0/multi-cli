@@ -138,14 +138,56 @@ func (r *Router) RebuildChain() {
 	}
 }
 
+// ProviderFailure records one provider's failure while the fallback chain was
+// being walked. Small enough to send to the dashboard in an error response.
+type ProviderFailure struct {
+	Provider string `json:"provider"`
+	Error    string `json:"error"`
+}
+
+// ChainError is returned when no provider in the fallback chain could serve the
+// request. It carries the per-provider causes so the HTTP layer can report
+// *why* routing failed instead of a bare "all providers exhausted" -- which is
+// indistinguishable from a dead backend in the browser.
+type ChainError struct {
+	Message   string            `json:"message"`
+	Providers []ProviderFailure `json:"providers,omitempty"`
+}
+
+func (e *ChainError) Error() string {
+	if len(e.Providers) == 0 {
+		return e.Message
+	}
+	parts := make([]string, 0, len(e.Providers))
+	for _, f := range e.Providers {
+		parts = append(parts, f.Provider+": "+f.Error)
+	}
+	return fmt.Sprintf("%s [%s]", e.Message, strings.Join(parts, "; "))
+}
+
+// errText flattens a provider error into one short, log/JSON-safe line.
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := strings.Join(strings.Fields(err.Error()), " ")
+	if len(s) > 240 {
+		s = s[:240] + "..."
+	}
+	return s
+}
+
 func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	chain := append([]Provider{r.primary}, r.fallbacks...)
 	var lastErr error
+	failures := make([]ProviderFailure, 0, len(chain))
+	cooling := 0
 	for _, p := range chain {
 		if p == nil {
 			continue
 		}
 		if r.isCooling(p.Name()) {
+			cooling++
 			continue
 		}
 		// Skip non-chat models for tool-use requests
@@ -167,6 +209,7 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 				st.LastUsedMs.Store(now)
 				st.LastSuccessMs.Store(now)
 				st.TotalLatencyMs.Add(elapsed)
+				resp.Provider = p.Name()
 				return resp, nil
 			}
 			if isRateLimit(err) || isTransient(err) {
@@ -187,13 +230,24 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 			r.setCooldown(p.Name())
 		}
 		lastErr = err
+		failures = append(failures, ProviderFailure{Provider: p.Name(), Error: errText(err)})
+		// Always log provider failures: without this a 502 from /v1/messages is
+		// completely silent in the journal and looks like an infrastructure fault.
+		log.Printf("router: %s failed (model=%s): %s", p.Name(), p.Model(), errText(err))
 		// Re-rank so next request prefers working providers.
 		go r.RebuildChain()
 	}
 	if lastErr == nil {
-		return ChatResponse{}, fmt.Errorf("all providers cooling down")
+		msg := "all providers cooling down"
+		if cooling > 0 {
+			msg = fmt.Sprintf("all %d providers cooling down", cooling)
+		}
+		log.Printf("router: %s", msg)
+		return ChatResponse{}, &ChainError{Message: msg}
 	}
-	return ChatResponse{}, fmt.Errorf("all providers exhausted: %w", lastErr)
+	msg := fmt.Sprintf("all providers exhausted (%d tried, %d cooling)", len(failures), cooling)
+	log.Printf("router: %s -- last error: %s", msg, errText(lastErr))
+	return ChatResponse{}, &ChainError{Message: msg, Providers: failures}
 }
 
 func (r *Router) Stream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error) {
@@ -233,10 +287,12 @@ func (r *Router) Stream(ctx context.Context, req ChatRequest) (<-chan StreamChun
 			return wrapped, nil
 		}
 		st.Errors.Add(1)
+		log.Printf("router: stream %s failed (model=%s): %s", p.Name(), p.Model(), errText(err))
 		r.setCooldown(p.Name())
 		go r.RebuildChain()
 	}
-	return nil, fmt.Errorf("all providers unavailable for streaming")
+	log.Printf("router: no provider available for streaming")
+	return nil, &ChainError{Message: "all providers unavailable for streaming"}
 }
 
 func (r *Router) isCooling(name string) bool {
@@ -253,10 +309,13 @@ func (r *Router) setCooldown(name string) {
 }
 
 // isChatCapable returns false for models that are clearly not chat/tool-capable
-// (speech, vision, image generation, etc.).
+// (speech, live-streaming, vision, image generation, etc.).
 func isChatCapable(model string) bool {
 	noChat := []string{"speech", "tts", "whisper", "audio", "vision", "image",
-		"orpheus", "arabic", "safeguard", "embedding", "embed", "rerank"}
+		"orpheus", "arabic", "safeguard", "embedding", "embed", "rerank",
+		// Live/bidirectional streaming models (e.g. gemini-*-live-*) only accept
+		// bidiGenerateContent over WebSocket, never plain chat completions.
+		"live", "bidi", "realtime"}
 	lower := strings.ToLower(model)
 	for _, s := range noChat {
 		if strings.Contains(lower, s) {

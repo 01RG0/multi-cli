@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,49 @@ import (
 	"github.com/01rg0/orchestrator/internal/memory"
 	"github.com/01rg0/orchestrator/internal/provider"
 )
+
+// proxyErrorBody is the JSON envelope returned whenever routing fails. It keeps
+// Anthropic's {"type":"error","error":{...}} shape (so SDK clients still read
+// error.message) and adds the per-provider causes the router collected.
+type proxyErrorBody struct {
+	Type  string           `json:"type"`
+	Error proxyErrorDetail `json:"error"`
+}
+
+type proxyErrorDetail struct {
+	Type      string                     `json:"type"`
+	Message   string                     `json:"message"`
+	Providers []provider.ProviderFailure `json:"providers,omitempty"`
+}
+
+// writeProxyError reports a routing failure as JSON instead of a plain-text
+// body. A bare "http.Error" here is what produced the unreadable
+// "HTTP 502: <!DOCTYPE html>" chat message once Cloudflare rewrote the body.
+func writeProxyError(w http.ResponseWriter, code int, err error) {
+	detail := proxyErrorDetail{Type: "api_error", Message: err.Error()}
+	var chainErr *provider.ChainError
+	if errors.As(err, &chainErr) {
+		detail.Type = "provider_unavailable"
+		detail.Message = chainErr.Message
+		detail.Providers = chainErr.Providers
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("X-Ultron-Error", detail.Type)
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(proxyErrorBody{Type: "error", Error: detail})
+}
+
+// chainTimeout is the budget for one /v1/messages request across the whole
+// provider fallback chain. Without it, a chain of slow/rate-limited providers
+// can outlive the HTTP server WriteTimeout (180s), which the browser sees as a
+// gateway error even though the backend is healthy.
+func (s *Server) chainTimeout() time.Duration {
+	if s.cfg != nil && s.cfg.RequestTimeoutSeconds > 0 {
+		return time.Duration(s.cfg.RequestTimeoutSeconds) * time.Second
+	}
+	return 90 * time.Second
+}
 
 // proxyRequest mirrors the Anthropic /v1/messages request body.
 // System is any because the SDK sends either a plain string or
@@ -111,14 +155,21 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.router.Complete(r.Context(), chatReq)
+	ctx, cancel := context.WithTimeout(r.Context(), s.chainTimeout())
+	defer cancel()
+
+	resp, err := s.router.Complete(ctx, chatReq)
 	if err != nil {
 		code := http.StatusBadGateway
 		var apiErr *provider.APIError
 		if isAPIError(err, &apiErr) && apiErr.StatusCode == 429 {
 			code = http.StatusTooManyRequests
 		}
-		http.Error(w, err.Error(), code)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			code = http.StatusGatewayTimeout
+		}
+		log.Printf("proxy: routing failed status=%d: %v", code, err)
+		writeProxyError(w, code, err)
 		return
 	}
 
@@ -161,6 +212,10 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if resp.Provider != "" {
+		// Lets the dashboard show which provider actually served the reply.
+		w.Header().Set("X-Ultron-Provider", resp.Provider)
+	}
 	json.NewEncoder(w).Encode(out)
 }
 
@@ -173,7 +228,8 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 	}
 	ch, err := router.Stream(r.Context(), chatReq)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		log.Printf("proxy: stream routing failed: %v", err)
+		writeProxyError(w, http.StatusBadGateway, err)
 		return
 	}
 
