@@ -102,6 +102,7 @@ export function ChatSender({
     setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      textareaRef.current.focus();
     }
 
     await onSend(currentText, currentAttachments.length > 0 ? currentAttachments : undefined);
@@ -283,6 +284,7 @@ export function ChatSender({
           placeholder={isRecording ? 'Listening to speech...' : placeholder}
           disabled={isLoading}
           rows={1}
+          dir="auto"
           className="w-full resize-none bg-transparent px-3.5 pt-3 pb-2 text-sm text-white placeholder-zinc-500 outline-none leading-relaxed disabled:opacity-50"
           style={{ minHeight: '44px', maxHeight: '160px' }}
         />

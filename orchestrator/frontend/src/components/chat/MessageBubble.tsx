@@ -92,7 +92,7 @@ function renderMarkdown(content: string) {
   const parts = content.split(/(```[\s\S]*?```)/g);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" dir="auto">
       {parts.map((part, i) => {
         if (part.startsWith('```')) {
           const lines = part.slice(3, -3).trim().split('\n');
@@ -154,7 +154,7 @@ function renderMarkdown(content: string) {
               }
 
               return (
-                <p key={lineIdx} className="text-zinc-200 leading-relaxed break-words">
+                <p key={lineIdx} className="text-zinc-200 leading-relaxed break-words" dir="auto">
                   {formatInline(line)}
                 </p>
               );
@@ -295,7 +295,7 @@ export function MessageBubble({ msg, onRegenerate, onFeedback }: MessageBubblePr
 
           {/* Body */}
           {isUser ? (
-            <p className="whitespace-pre-wrap break-words leading-relaxed text-zinc-100 font-normal">
+            <p className="whitespace-pre-wrap break-words leading-relaxed text-zinc-100 font-normal" dir="auto">
               {msg.content}
             </p>
           ) : (
