@@ -173,6 +173,22 @@ export default function MemoryNeuralGraph() {
       adj.get(e.src)!.push(e.dst);
     }
 
+    // If no real edges exist, generate temporal adjacency edges (nodes created close in time)
+    if (backendEdges.length === 0 && backendNodes.length > 1) {
+      const sorted = [...backendNodes].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const src = sorted[i].id;
+        const dst = sorted[i + 1].id;
+        if (!adj.has(src)) adj.set(src, []);
+        adj.get(src)!.push(dst);
+        // Also link to i+2 every 3rd node to create a web not a chain
+        if (i % 3 === 0 && i + 2 < sorted.length) {
+          const dst2 = sorted[i + 2].id;
+          adj.get(src)!.push(dst2);
+        }
+      }
+    }
+
     const centerX = dims.w > 40 ? dims.w / 2 : 550;
     const centerY = dims.h > 40 ? dims.h / 2 : 360;
     const total = backendNodes.length;
@@ -299,15 +315,14 @@ export default function MemoryNeuralGraph() {
     return searchMatchIds;
   }, [search, searchMatchIds]);
 
-  // depth=3 for selected node (more dendrites), depth=2 otherwise (perf)
   const geomMap = useMemo(() => {
     const m = new Map<string, NeuronGeom>();
     nodes.forEach((n, i) => {
       const cs = Math.min(n.content.length / 250, 1);
-      m.set(n.id, buildNeuron(i, n.activation, cs, sel === n.id ? 3 : 2));
+      m.set(n.id, buildNeuron(i, n.activation, cs, 2));
     });
     return m;
-  }, [nodes, sel]);
+  }, [nodes]);
 
   // Bouton hover: stores screen-space position for tooltip
   const [hovBouton, setHovBouton] = useState<{ nodeId: string; cx: number; cy: number } | null>(null);
@@ -424,7 +439,7 @@ export default function MemoryNeuralGraph() {
           style={{ background: 'radial-gradient(ellipse at 50% 45%, #0e0a05 0%, #020100 100%)' }}
           onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel}>
 
-          <svg width={dims.w} height={dims.h} className="absolute inset-0 select-none" style={{ overflow: 'visible' }}>
+          <svg width={dims.w} height={dims.h} className="absolute inset-0 select-none" style={{ overflow: 'visible' }} onClick={() => setSel(null)}>
             <defs>
               <filter id="fng" x="-80%" y="-80%" width="260%" height="260%">
                 <feGaussianBlur stdDeviation="5" result="b1" />
@@ -542,7 +557,7 @@ export default function MemoryNeuralGraph() {
                   <g key={node.id} className="nn"
                     transform={`translate(${node.x},${node.y})`}
                     opacity={isVis ? 1 : 0.07}
-                    onClick={() => setSel(s => s === node.id ? null : node.id)}
+                    onClick={(e) => { e.stopPropagation(); setSel(node.id); }}
                     onMouseEnter={() => setHov(node.id)}
                     onMouseLeave={() => setHov(null)}
                     style={{ cursor: 'pointer' }}>
