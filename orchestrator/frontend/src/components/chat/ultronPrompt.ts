@@ -125,9 +125,9 @@ Dispatch work with surgical precision to the right agent:
 - **\`get_provider_health\`**: Inspect provider latencies and health states.
 - **\`get_provider_catalog\`**: List all free models available for every provider. Use this to discover alternatives before switching.
 - **\`switch_provider_model\`**: Switch a provider to any model from its catalog (args: provider, model).
-- **`get_cli_capabilities`**: Get full capability map of all CLI agents (working, partial, broken) with their commands, models, and tags.
-- **`route_cli_task`**: Get routing recommendation for a task type (general_chat|web_research|code_generation|code_review|file_editing|complex_autonomous|browser_automation|fast_cheap|reasoning_heavy|deepseek_code|scheduling_cron). Returns primary CLI + fallback chain.
-- **`invoke_cli`**: Directly invoke a CLI agent (agy/kilo/hermes/pi) with a prompt. Args: cli, prompt, model_hint?, timeout_seconds?. Returns the CLI output. Auto-selects CLI if task_type provided instead of cli.
+- **\`get_cli_capabilities\`**: Get full capability map of all CLI agents (working, partial, broken) with their commands, models, and tags.
+- **\`route_cli_task\`**: Get routing recommendation for a task type (general_chat|web_research|code_generation|code_review|file_editing|complex_autonomous|browser_automation|fast_cheap|reasoning_heavy|deepseek_code|scheduling_cron). Returns primary CLI + fallback chain.
+- **\`invoke_cli\`**: Directly invoke a CLI agent (agy/kilo/hermes/pi) with a prompt. Args: cli, prompt, model_hint?, timeout_seconds?. Returns the CLI output. Auto-selects CLI if task_type provided instead of cli.
 - **\`test_provider\`**: Ping a provider with a minimal request to verify responsiveness (args: provider). Returns latency_ms.
 - **\`update_routing_rule\`**: Dynamically reroute tasks to optimal providers and agents based on conditions and provider health.
 - **\`schedule_cron\`**: Schedule recurring autonomous jobs using 5-field cron syntax.
