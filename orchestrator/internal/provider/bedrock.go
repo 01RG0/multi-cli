@@ -210,3 +210,8 @@ func hmacSHA256(key, data []byte) []byte {
 	h.Write(data)
 	return h.Sum(nil)
 }
+
+// ListModels returns the configured model — Bedrock has no simple public /models endpoint.
+func (p *BedrockProvider) ListModels(ctx context.Context) ([]string, error) {
+	return []string{p.modelID}, nil
+}

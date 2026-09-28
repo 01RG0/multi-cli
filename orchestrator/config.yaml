@@ -9,7 +9,7 @@ providers:
     type: anthropic_compat
     base_url: ${TOKEN_HARBOR_BASE_URL}
     api_key: ${TOKEN_HARBOR_API_KEY}
-    model: gpt-4o-mini
+    model: claude-sonnet-4.6
 
   - name: codecraft
     type: openai_compat
@@ -21,13 +21,13 @@ providers:
     type: anthropic_compat
     base_url: ${AIHUBMIX_BASE_URL}
     api_key: ${AIHUBMIX_API_KEY}
-    model: gpt-4o-mini
+    model: claude-fable-5-1
 
   - name: apmix
-    type: anthropic_compat
+    type: openai_compat
     base_url: https://api.apmix.ai/v1
     api_key: ${APMIX_API_KEY}
-    model: gpt-6-luna-free
+    model: deepseek-v4-flash-free
 
   - name: dahl
     type: openai_compat
@@ -39,7 +39,7 @@ providers:
     type: openai_compat
     base_url: https://api.cerebras.ai/v1
     api_key: ${CEREBRAS_API_KEY}
-    model: llama-3.3-70b
+    model: qwen-3.8-27b
 
   - name: mistral
     type: openai_compat
@@ -51,49 +51,49 @@ providers:
     type: openai_compat
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
-    model: meta-llama/llama-3.1-8b-instruct:free
+    model: deepseek/deepseek-v4.1-flash
 
   - name: cohere
     type: openai_compat
     base_url: https://api.cohere.ai/compatibility/v1
     api_key: ${COHERE_API_KEY}
-    model: command-r
+    model: command-r7b-12-2024
 
   - name: apertis
-    type: anthropic_compat
+    type: openai_compat
     base_url: ${APERTIS_BASE_URL}
     api_key: ${APERTIS_API_KEY}
-    model: gpt-4o-mini
+    model: nemotron-3-ultra-550b-a55b:free
 
   - name: atessa
     type: openai_compat
     base_url: ${ATESSA_BASE_URL}
     api_key: ${ATESSA_API_KEY}
-    model: gpt-4o-mini
+    model: deepseek-v4.1-flash
 
   - name: pooled
     type: openai_compat
     base_url: ${POOLED_BASE_URL}
     api_key: ${POOLED_API_KEY}
-    model: gpt-4o-mini
+    model: deepseek-v4-flash-official
 
   - name: anyapi
     type: openai_compat
     base_url: ${ANYAPI_BASE_URL}
     api_key: ${ANYAPI_API_KEY}
-    model: gpt-4o-mini
+    model: nvidia/nemotron-3-ultra-550b-a55b:free
 
   - name: dashscope
     type: openai_compat
     base_url: ${ALIBABA_BASE_URL}
     api_key: ${ALIBABA_API_KEY}
-    model: qwen-plus
+    model: qwen3.8-max
 
   - name: gemini
     type: openai_compat
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     api_key: ${GEMINI_API_KEY}
-    model: gemini-2.0-flash
+    model: gemini-2.5-flash
 
   - name: anthropic
     type: anthropic
@@ -116,7 +116,7 @@ providers:
     model: us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Primary provider + fallback order — free/cheap providers first; bedrock last (AWS-hosted Anthropic)
-fallback_chain: [apmix, groq, dahl, cerebras, tokenharbor, aihubmix, codecraft, mistral, openrouter, apertis, atessa, pooled, anyapi, dashscope, cohere, gemini, bedrock-haiku, bedrock]
+fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, pooled, anyapi, apertis, dahl, groq, cerebras, openrouter, mistral, cohere, gemini, codecraft, bedrock-haiku, bedrock]
 
 max_retries: 3
 cooldown_seconds: 60

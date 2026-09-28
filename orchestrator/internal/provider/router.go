@@ -268,7 +268,7 @@ func (r *Router) SortByTier() {
 		if p == nil {
 			continue
 		}
-		tier := ModelTier[p.Model()]
+		tier := ModelScore(p.Model())
 		scores = append(scores, scored{p, tier})
 		r.tierMap[p.Name()] = tier
 	}
@@ -316,4 +316,54 @@ func backoff(attempt int) time.Duration {
 	base := time.Duration(1<<uint(attempt)) * 500 * time.Millisecond
 	jitter := time.Duration(rand.Int63n(int64(base / 2)))
 	return base + jitter
+}
+
+// AutoDiscoverModels probes all providers for their model lists, picks the
+// best-scoring model per provider, updates SetModel, and re-sorts the chain.
+// Run as a goroutine after startup so it doesn't block serving.
+func (r *Router) AutoDiscoverModels(ctx context.Context) {
+	discoverCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	r.mu.Lock()
+	all := make([]Provider, 0, 1+len(r.fallbacks))
+	if r.primary != nil {
+		all = append(all, r.primary)
+	}
+	all = append(all, r.fallbacks...)
+	r.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for _, p := range all {
+		wg.Add(1)
+		go func(p Provider) {
+			defer wg.Done()
+			mp, ok := p.(ModelProber)
+			if !ok {
+				return
+			}
+			models, err := mp.ListModels(discoverCtx)
+			if err != nil || len(models) == 0 {
+				return
+			}
+			best := BestModelByScore(models)
+			if best == "" {
+				return
+			}
+			current := p.Model()
+			score := ModelScore(best)
+			p.SetModel(best)
+			r.mu.Lock()
+			r.tierMap[p.Name()] = score
+			r.mu.Unlock()
+			if best != current {
+				log.Printf("[router] auto-discover: %s → %s (score=%d, was %s)", p.Name(), best, score, current)
+			} else {
+				log.Printf("[router] auto-discover: %s → %s (score=%d, confirmed)", p.Name(), best, score)
+			}
+		}(p)
+	}
+	wg.Wait()
+	r.SortByTier()
+	log.Printf("[router] auto-discovery complete — chain re-sorted")
 }

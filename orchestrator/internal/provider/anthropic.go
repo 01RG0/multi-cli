@@ -197,3 +197,62 @@ func (p *AnthropicProvider) Stream(ctx context.Context, req ChatRequest) (<-chan
 	}()
 	return ch, nil
 }
+
+// ListModels fetches available models. Tries OpenAI-compat /v1/models first
+// (most proxy providers use this format), then falls back to Anthropic native format.
+func (p *AnthropicProvider) ListModels(ctx context.Context) ([]string, error) {
+	// Try OpenAI-compat format first (proxy providers like tokenharbor, aihubmix)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v1/models", nil)
+	if err == nil {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+		if resp, err := p.client.Do(req); err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var result struct {
+					Data []struct {
+						ID string `json:"id"`
+					} `json:"data"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&result) == nil && len(result.Data) > 0 {
+					ids := make([]string, 0, len(result.Data))
+					for _, m := range result.Data {
+						if m.ID != "" {
+							ids = append(ids, m.ID)
+						}
+					}
+					return ids, nil
+				}
+			}
+		}
+	}
+	// Fall back to Anthropic native format
+	req2, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req2.Header.Set("x-api-key", p.apiKey)
+	req2.Header.Set("anthropic-version", anthropicVersion)
+	resp2, err := p.client.Do(req2)
+	if err != nil {
+		return nil, err
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("models: status %d", resp2.StatusCode)
+	}
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(result.Data))
+	for _, m := range result.Data {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	return ids, nil
+}
