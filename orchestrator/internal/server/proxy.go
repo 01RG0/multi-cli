@@ -207,6 +207,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 
 	writeSSE(w, flusher, map[string]any{"type": "ping"})
 
+	var streamUsage provider.Usage
 	for chunk := range ch {
 		if chunk.Err != nil {
 			break
@@ -218,6 +219,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 			})
 		}
 		if chunk.Done {
+			streamUsage = chunk.Usage
 			break
 		}
 	}
@@ -226,7 +228,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request, chatReq pr
 	writeSSE(w, flusher, map[string]any{
 		"type": "message_delta",
 		"delta": map[string]string{"stop_reason": "end_turn", "stop_sequence": ""},
-		"usage": map[string]int{"output_tokens": 0},
+		"usage": map[string]int{"output_tokens": streamUsage.OutputTokens},
 	})
 	writeSSE(w, flusher, map[string]any{"type": "message_stop"})
 	fmt.Fprintf(w, "data: [DONE]\n\n")

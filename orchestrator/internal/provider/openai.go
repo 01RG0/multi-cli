@@ -283,6 +283,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 		}
 		defer resp.Body.Close()
 
+		var pendingUsage Usage
 		buf := make([]byte, 4096)
 		for {
 			n, err := resp.Body.Read(buf)
@@ -295,7 +296,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 					}
 					payload := strings.TrimPrefix(line, "data: ")
 					if payload == "[DONE]" {
-						ch <- StreamChunk{Done: true}
+						ch <- StreamChunk{Done: true, Usage: pendingUsage}
 						return
 					}
 					var chunk struct {
@@ -304,9 +305,21 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 								Content string `json:"content"`
 							} `json:"delta"`
 						} `json:"choices"`
+						Usage *struct {
+							PromptTokens     int `json:"prompt_tokens"`
+							CompletionTokens int `json:"completion_tokens"`
+						} `json:"usage"`
 					}
-					if json.Unmarshal([]byte(payload), &chunk) == nil && len(chunk.Choices) > 0 {
-						ch <- StreamChunk{Delta: chunk.Choices[0].Delta.Content}
+					if json.Unmarshal([]byte(payload), &chunk) == nil {
+						if chunk.Usage != nil {
+							pendingUsage = Usage{
+								InputTokens:  chunk.Usage.PromptTokens,
+								OutputTokens: chunk.Usage.CompletionTokens,
+							}
+						}
+						if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+							ch <- StreamChunk{Delta: chunk.Choices[0].Delta.Content}
+						}
 					}
 				}
 			}

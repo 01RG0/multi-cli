@@ -36,6 +36,26 @@ interface GraphResponse {
   edges: BackendEdge[];
 }
 
+interface BoutonConnection {
+  targetId: string;
+  targetLabel: string;
+  targetType: MemType;
+  targetActivation: number;
+  relation: string;
+  weight: number;
+  ageLabel: string;
+  trend: 'strengthening' | 'stable' | 'decaying';
+  recencyOp: number;
+}
+
+interface Bouton {
+  x: number;
+  y: number;
+  r: number;
+  connIdx: number;
+  conn: BoutonConnection | null;
+}
+
 const ALL_TYPES: MemType[] = ['episodic', 'semantic', 'working', 'procedural', 'index'];
 
 function hashType(seed: string): MemType {
@@ -107,29 +127,41 @@ const SEED_NODES: MemNode[] = [
 ];
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
+function formatAge(ms: number): string {
+  if (ms <= 0) return 'now';
+  const s = ms / 1000;
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
 function growBranch(
-  shafts: string[], boutons: { x: number; y: number; r: number }[],
+  shafts: string[], boutons: Bouton[],
   x: number, y: number, angle: number, length: number,
-  depth: number, seed: number, bi: number,
+  depth: number, seed: number, bi: number, connIdx: number,
 ) {
-  if (length < 4 || depth === 0) { boutons.push({ x, y, r: 1.1 + (seed % 3) * 0.25 }); return; }
+  if (length < 4 || depth === 0) {
+    boutons.push({ x, y, r: 1.1 + (seed % 3) * 0.25, connIdx, conn: null });
+    return;
+  }
   const ex = x + Math.cos(angle) * length, ey = y + Math.sin(angle) * length;
   const wx = Math.sin(seed * 7.3 + bi * 3.1 + depth * 1.7) * length * 0.18;
   const wy = Math.cos(seed * 5.9 + bi * 2.7 + depth * 2.1) * length * 0.18;
   shafts.push(`M ${x.toFixed(1)} ${y.toFixed(1)} Q ${((x+ex)/2+wx).toFixed(1)} ${((y+ey)/2+wy).toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`);
   const spread  = 0.42 + Math.abs(Math.sin(seed * 2.3 + bi)) * 0.24;
   const lenMult = 0.58 + Math.sin(seed * 3.1 + bi + depth) * 0.07;
-  growBranch(shafts, boutons, ex, ey, angle + spread, length * lenMult, depth - 1, seed, bi * 2);
-  growBranch(shafts, boutons, ex, ey, angle - spread, length * lenMult, depth - 1, seed, bi * 2 + 1);
+  growBranch(shafts, boutons, ex, ey, angle + spread, length * lenMult, depth - 1, seed, bi * 2, connIdx);
+  growBranch(shafts, boutons, ex, ey, angle - spread, length * lenMult, depth - 1, seed, bi * 2 + 1, connIdx);
 }
 
 interface NeuronGeom {
   somaD: string; shaftsD: string;
-  boutons: { x: number; y: number; r: number }[];
+  boutons: Bouton[];
   axonEnd: { x: number; y: number };
 }
 
-function buildNeuron(seed: number, activation: number, cs: number, depth = 2): NeuronGeom {
+function buildNeuron(seed: number, activation: number, cs: number, connections: BoutonConnection[], depth = 2): NeuronGeom {
   const somaR  = 7 + activation * 8 + cs * 5;
   const spread = 44 + activation * 32 + cs * 18;
   const n = 10;
@@ -142,18 +174,36 @@ function buildNeuron(seed: number, activation: number, cs: number, depth = 2): N
   let somaD = `M ${sMids[n-1][0].toFixed(1)} ${sMids[n-1][1].toFixed(1)}`;
   for (let k = 0; k < n; k++) somaD += ` Q ${sPts[k][0].toFixed(1)} ${sPts[k][1].toFixed(1)} ${sMids[k][0].toFixed(1)} ${sMids[k][1].toFixed(1)}`;
   somaD += ' Z';
-  const rawShafts: string[] = [], boutons: { x: number; y: number; r: number }[] = [];
-  const tc = 4 + (seed % 3);
+  const rawShafts: string[] = [], boutons: Bouton[] = [];
+  const tc = Math.max(3, Math.min(8, connections.length > 0 ? connections.length : 4 + (seed % 3)));
   for (let t = 0; t < tc; t++) {
     const base = ((t / tc) * Math.PI * 1.75 - Math.PI * 0.875) + Math.sin(seed * 5.1 + t * 2.3) * 0.2;
     const sx = Math.cos(base) * somaR * 0.9, sy = Math.sin(base) * somaR * 0.9;
-    growBranch(rawShafts, boutons, sx, sy, base, spread * (0.5 + Math.abs(Math.sin(seed * 3.7 + t)) * 0.32), depth, seed + t * 7, t);
+    const connIdx = t < connections.length ? t : -1;
+    growBranch(rawShafts, boutons, sx, sy, base, spread * (0.5 + Math.abs(Math.sin(seed * 3.7 + t)) * 0.32), depth, seed + t * 7, t, connIdx);
   }
   const axA = Math.PI / 2 + Math.sin(seed * 2.7) * 0.32, axL = spread * 1.7;
   const axonEnd = { x: Math.cos(axA) * axL, y: Math.sin(axA) * axL };
   rawShafts.push(`M 0 0 Q ${(axonEnd.x/2+Math.sin(seed*4.1)*axL*0.1).toFixed(1)} ${(axonEnd.y/2).toFixed(1)} ${axonEnd.x.toFixed(1)} ${axonEnd.y.toFixed(1)}`);
-  growBranch(rawShafts, boutons, axonEnd.x, axonEnd.y, axA - 0.45, axL * 0.18, 1, seed + 13, 20);
-  growBranch(rawShafts, boutons, axonEnd.x, axonEnd.y, axA + 0.45, axL * 0.18, 1, seed + 26, 21);
+  growBranch(rawShafts, boutons, axonEnd.x, axonEnd.y, axA - 0.45, axL * 0.18, 1, seed + 13, 20, -1);
+  growBranch(rawShafts, boutons, axonEnd.x, axonEnd.y, axA + 0.45, axL * 0.18, 1, seed + 26, 21, -1);
+
+  // Assign connection data to the furthest bouton per connIdx
+  const primary = new Map<number, number>();
+  boutons.forEach((b, i) => {
+    if (b.connIdx < 0) return;
+    const prev = primary.get(b.connIdx);
+    if (prev === undefined) { primary.set(b.connIdx, i); return; }
+    const d2 = b.x*b.x + b.y*b.y;
+    const pd2 = boutons[prev].x*boutons[prev].x + boutons[prev].y*boutons[prev].y;
+    if (d2 > pd2) primary.set(b.connIdx, i);
+  });
+  for (const [ci, bi] of primary.entries()) {
+    const c = connections[ci];
+    if (!c) continue;
+    boutons[bi] = { ...boutons[bi], r: 1.2 + c.weight * 3.8, conn: c };
+  }
+
   return { somaD, shaftsD: rawShafts.join(' '), boutons: boutons.slice(0, 20), axonEnd };
 }
 
@@ -175,6 +225,7 @@ export default function MemoryNeuralGraph() {
   const [searchMatchIds, setSearchMatchIds] = useState<Set<string> | null>(null);
   const [nodes, setNodes]   = useState<MemNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [edges, setEdges] = useState<BackendEdge[]>([]);
   const [flashingNodeId, setFlashingNodeId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [nLabel, setNLabel] = useState('');
@@ -263,6 +314,7 @@ export default function MemoryNeuralGraph() {
       const data = await apiFetch<GraphResponse>('/api/memory/graph');
       const mapped = mapGraphToMemNodes(data?.nodes || [], data?.edges || []);
       setNodes(mapped);
+      setEdges(data?.edges || []);
     } catch (err) {
       console.error('Failed to load memory graph from backend:', err);
       setNodes(prev => prev.length > 0 ? prev : SEED_NODES);
@@ -341,17 +393,47 @@ export default function MemoryNeuralGraph() {
     return searchMatchIds;
   }, [search, searchMatchIds]);
 
+  const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+
+  const edgeMap = useMemo(() => {
+    const m = new Map<string, BackendEdge[]>();
+    for (const e of edges) {
+      if (!m.has(e.src)) m.set(e.src, []);
+      m.get(e.src)!.push(e);
+    }
+    return m;
+  }, [edges]);
+
   const geomMap = useMemo(() => {
     const m = new Map<string, NeuronGeom>();
     nodes.forEach((n, i) => {
       const cs = Math.min(n.content.length / 250, 1);
-      m.set(n.id, buildNeuron(i, n.activation, cs, 2));
+      const conns: BoutonConnection[] = n.connections.map(cid => {
+        const target = nodeMap.get(cid);
+        const edge = edgeMap.get(n.id)?.find(e => e.dst === cid);
+        const w = edge?.weight ?? 0.5;
+        const ageMs = edge?.valid_at ? Date.now() - edge.valid_at * 1000 : 0;
+        const isDecaying = !!(edge?.invalid_at && edge.invalid_at > 0 && edge.invalid_at < Date.now() / 1000);
+        const recencyOp = ageMs < 3_600_000 ? 1.0 : ageMs < 86_400_000 ? 0.7 : ageMs < 604_800_000 ? 0.4 : 0.25;
+        return {
+          targetId: cid,
+          targetLabel: target?.label ?? cid,
+          targetType: target?.type ?? 'semantic',
+          targetActivation: target?.activation ?? 0.5,
+          relation: edge?.relation ?? 'synapse',
+          weight: w,
+          ageLabel: formatAge(ageMs),
+          trend: isDecaying ? 'decaying' : w > 0.7 ? 'strengthening' : 'stable',
+          recencyOp,
+        };
+      });
+      m.set(n.id, buildNeuron(i, n.activation, cs, conns, 2));
     });
     return m;
-  }, [nodes]);
+  }, [nodes, nodeMap, edgeMap]);
 
   // Bouton hover: stores screen-space position for tooltip
-  const [hovBouton, setHovBouton] = useState<{ nodeId: string; cx: number; cy: number } | null>(null);
+  const [hovBouton, setHovBouton] = useState<{ nodeId: string; cx: number; cy: number; conn: BoutonConnection | null } | null>(null);
 
   const selNode  = nodes.find(n => n.id === sel) ?? null;
   const selColor = selNode ? TYPE_META[selNode.type].color : '#fff';
@@ -609,7 +691,16 @@ export default function MemoryNeuralGraph() {
                     <path d={geom.shaftsD} fill="none" stroke={color} strokeWidth={shaftW} opacity={shaftOp} strokeLinecap="round" />
 
                     {geom.boutons.map((b, bi) => {
-                      const bOp = isSel ? 1.0 : isHov ? 0.85 : 0.38 + node.activation * 0.45;
+                      const bConn  = b.conn;
+                      const tType  = bConn?.targetType;
+                      const bColor = tType ? TYPE_META[tType].color : color;
+                      const bGlow  = tType ? TYPE_META[tType].glow  : glow;
+                      const isRing = bConn?.relation != null && /contradict|conflict|negate|oppose/i.test(bConn.relation);
+                      const baseOp = isSel ? 1.0 : isHov ? 0.85 : 0.38 + node.activation * 0.45;
+                      const bOp    = baseOp * (bConn?.recencyOp ?? 1.0);
+                      const bPulse = bConn
+                        ? (bConn.targetActivation > 0.8 ? `${1.2 + bi * 0.05}s` : bConn.targetActivation > 0.5 ? `${2.2 + bi * 0.07}s` : `${3.5 + bi * 0.09}s`)
+                        : `${2.3 + (bi * 0.19) % 1.2}s`;
                       const hitR = Math.max(7, b.r * 4);
                       return (
                         <g key={bi}
@@ -617,26 +708,25 @@ export default function MemoryNeuralGraph() {
                           onClick={(e) => { e.stopPropagation(); setSel(node.id); }}
                           onMouseEnter={(e) => {
                             e.stopPropagation();
-                            const svgEl = (e.currentTarget.ownerSVGElement as SVGSVGElement);
+                            const svgEl = e.currentTarget.ownerSVGElement as SVGSVGElement;
                             const rect = svgEl.getBoundingClientRect();
                             const sx = rect.left + (node.x + b.x) * zoom + pan.x;
                             const sy = rect.top  + (node.y + b.y) * zoom + pan.y;
-                            setHovBouton({ nodeId: node.id, cx: sx, cy: sy });
+                            setHovBouton({ nodeId: node.id, cx: sx, cy: sy, conn: bConn });
                           }}
                           onMouseLeave={(e) => { e.stopPropagation(); setHovBouton(null); }}
                         >
-                          {/* Enlarged invisible hit area */}
                           <circle cx={b.x} cy={b.y} r={hitR} fill="transparent" />
-                          {/* Glow halo */}
-                          <circle cx={b.x} cy={b.y} r={b.r * 2.5} fill={glow} opacity={bOp * 0.25} filter="url(#fnb)" />
-                          {/* Core dot */}
-                          <circle cx={b.x} cy={b.y} r={b.r} fill={glow} opacity={bOp}>
-                            <animate attributeName="r"
-                              values={`${b.r};${b.r * 1.5};${b.r}`}
-                              dur={`${2.3 + (bi * 0.19) % 1.2}s`}
-                              begin={`${(bi * 0.23) % 2}s`}
-                              repeatCount="indefinite" />
-                          </circle>
+                          <circle cx={b.x} cy={b.y} r={b.r * 2.5} fill={bGlow} opacity={bOp * 0.22} filter="url(#fnb)" />
+                          {isRing ? (
+                            <circle cx={b.x} cy={b.y} r={b.r} fill="none" stroke={bColor} strokeWidth={0.8} opacity={bOp}>
+                              <animate attributeName="r" values={`${b.r};${b.r*1.4};${b.r}`} dur={bPulse} begin={`${(bi*0.23)%2}s`} repeatCount="indefinite" />
+                            </circle>
+                          ) : (
+                            <circle cx={b.x} cy={b.y} r={b.r} fill={bColor} opacity={bOp}>
+                              <animate attributeName="r" values={`${b.r};${b.r*1.5};${b.r}`} dur={bPulse} begin={`${(bi*0.23)%2}s`} repeatCount="indefinite" />
+                            </circle>
+                          )}
                         </g>
                       );
                     })}
@@ -696,17 +786,47 @@ export default function MemoryNeuralGraph() {
           {hovBouton && (() => {
             const n = nodes.find(nd => nd.id === hovBouton.nodeId);
             if (!n) return null;
-            const meta = TYPE_META[n.type];
+            const conn = hovBouton.conn;
             const wrapRect = wrapRef.current?.getBoundingClientRect();
             const tx = hovBouton.cx - (wrapRect?.left ?? 0) + 10;
             const ty = hovBouton.cy - (wrapRect?.top  ?? 0) - 12;
+
+            if (conn) {
+              const tMeta = TYPE_META[conn.targetType];
+              const trendSymbol = conn.trend === 'strengthening' ? '↑' : conn.trend === 'decaying' ? '↓' : '→';
+              const trendColor  = conn.trend === 'strengthening' ? '#4ade80' : conn.trend === 'decaying' ? '#f87171' : '#a1a1aa';
+              return (
+                <div className="absolute z-50 pointer-events-none" style={{ left: tx, top: ty, maxWidth: 240 }}>
+                  <div className="bg-[#0c0a06] border rounded-lg px-3 py-2.5 shadow-xl text-[10px] font-mono" style={{ borderColor: `${tMeta.color}55` }}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tMeta.color }} />
+                      <span className="font-bold" style={{ color: tMeta.color }}>→ {conn.targetLabel}</span>
+                      <span className="text-[8px] ml-auto" style={{ color: `${tMeta.color}60` }}>{tMeta.label}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                      <span className="text-zinc-600">relation</span>
+                      <span className="text-zinc-300">{conn.relation}</span>
+                      <span className="text-zinc-600">weight</span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-zinc-300">{conn.weight.toFixed(2)}</span>
+                        <span className="inline-block h-1 rounded" style={{ width: `${conn.weight * 40}px`, background: tMeta.color }} />
+                      </span>
+                      <span className="text-zinc-600">age</span>
+                      <span className="text-zinc-300">{conn.ageLabel}</span>
+                      <span className="text-zinc-600">target act.</span>
+                      <span className="text-zinc-300">{Math.round(conn.targetActivation * 100)}%</span>
+                      <span className="text-zinc-600">status</span>
+                      <span style={{ color: trendColor }}>{conn.trend} {trendSymbol}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const meta = TYPE_META[n.type];
             return (
-              <div
-                className="absolute z-50 pointer-events-none"
-                style={{ left: tx, top: ty, maxWidth: 220 }}
-              >
-                <div className="bg-[#0c0a06] border rounded-lg px-3 py-2 shadow-xl text-[10px] font-mono"
-                  style={{ borderColor: `${meta.color}55` }}>
+              <div className="absolute z-50 pointer-events-none" style={{ left: tx, top: ty, maxWidth: 220 }}>
+                <div className="bg-[#0c0a06] border rounded-lg px-3 py-2 shadow-xl text-[10px] font-mono" style={{ borderColor: `${meta.color}55` }}>
                   <div className="font-bold mb-0.5" style={{ color: meta.color }}>{n.label}</div>
                   <div className="text-[9px] mb-1" style={{ color: `${meta.color}80` }}>
                     {meta.label.toUpperCase()} · {Math.round(n.activation * 100)}% activation
@@ -714,11 +834,6 @@ export default function MemoryNeuralGraph() {
                   <div className="text-zinc-400 leading-relaxed" style={{ fontSize: 9 }}>
                     {n.content.length > 140 ? n.content.slice(0, 140) + '…' : n.content}
                   </div>
-                  {n.connections.length > 0 && (
-                    <div className="mt-1.5 text-[8px]" style={{ color: `${meta.color}60` }}>
-                      {n.connections.length} synaptic link{n.connections.length !== 1 ? 's' : ''} · click to open
-                    </div>
-                  )}
                 </div>
               </div>
             );

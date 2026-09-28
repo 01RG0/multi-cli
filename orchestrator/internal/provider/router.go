@@ -210,7 +210,7 @@ func (r *Router) Stream(ctx context.Context, req ChatRequest) (<-chan StreamChun
 		}
 		st := r.providerStats(p.Name())
 		start := time.Now()
-		ch, err := p.Stream(ctx, req)
+		rawCh, err := p.Stream(ctx, req)
 		if err == nil {
 			elapsed := time.Since(start).Milliseconds()
 			now := time.Now().UnixMilli()
@@ -218,7 +218,19 @@ func (r *Router) Stream(ctx context.Context, req ChatRequest) (<-chan StreamChun
 			st.LastUsedMs.Store(now)
 			st.LastSuccessMs.Store(now)
 			st.TotalLatencyMs.Add(elapsed)
-			return ch, nil
+			// Wrap channel to capture usage from the Done chunk
+			wrapped := make(chan StreamChunk, 64)
+			go func() {
+				defer close(wrapped)
+				for chunk := range rawCh {
+					if chunk.Done && (chunk.Usage.InputTokens > 0 || chunk.Usage.OutputTokens > 0) {
+						st.InputTokens.Add(int64(chunk.Usage.InputTokens))
+						st.OutputTokens.Add(int64(chunk.Usage.OutputTokens))
+					}
+					wrapped <- chunk
+				}
+			}()
+			return wrapped, nil
 		}
 		st.Errors.Add(1)
 		r.setCooldown(p.Name())

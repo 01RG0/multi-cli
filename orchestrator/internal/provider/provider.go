@@ -45,9 +45,10 @@ type Usage struct {
 }
 
 type StreamChunk struct {
-	Delta   string
-	Done    bool
-	Err     error
+	Delta string
+	Done  bool
+	Err   error
+	Usage Usage // populated on the Done=true chunk when the provider reports it
 }
 
 type Provider interface {
