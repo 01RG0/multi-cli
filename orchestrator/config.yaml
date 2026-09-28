@@ -6,10 +6,10 @@ providers:
     model: qwen/qwen3.8-27b
 
   - name: tokenharbor
-    type: anthropic_compat
+    type: openai_compat
     base_url: ${TOKEN_HARBOR_BASE_URL}
     api_key: ${TOKEN_HARBOR_API_KEY}
-    model: claude-sonnet-4.6
+    model: deepseek-v4.1-flash:free
 
   - name: codecraft
     type: openai_compat
@@ -18,10 +18,10 @@ providers:
     model: gpt-4o-mini
 
   - name: aihubmix
-    type: anthropic_compat
+    type: openai_compat
     base_url: ${AIHUBMIX_BASE_URL}
     api_key: ${AIHUBMIX_API_KEY}
-    model: claude-fable-5-1
+    model: nemotron-3-ultra-550b-a55b-free
 
   - name: apmix
     type: openai_compat
@@ -69,7 +69,7 @@ providers:
     type: openai_compat
     base_url: ${ATESSA_BASE_URL}
     api_key: ${ATESSA_API_KEY}
-    model: deepseek-v4.1-flash
+    model: laguna-s-2.1
 
   - name: pooled
     type: openai_compat

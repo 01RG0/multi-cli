@@ -120,9 +120,11 @@ func ScoreModelName(name string) int {
 		score += 4
 	}
 
-	// :free suffix = explicitly free tier (minor positive signal)
-	if strings.HasSuffix(n, ":free") {
-		score += 1
+	// :free or -free suffix = explicitly free-tier model.
+	// Large boost so free models always beat same-family paid models when
+	// a provider has $0 balance — prevents auto-discovery picking paid models.
+	if strings.HasSuffix(n, ":free") || strings.HasSuffix(n, "-free") {
+		score += 20
 	}
 
 	// Non-chat models: safety/embedding/speech/image — skip for routing
