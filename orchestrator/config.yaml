@@ -108,8 +108,15 @@ providers:
     secret_key: ${AWS_SECRET_ACCESS_KEY}
     model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
 
-# Primary provider + fallback order — free/cheap providers first; bedrock & anthropic only when all else fails
-fallback_chain: [apmix, groq, dahl, cerebras, tokenharbor, aihubmix, codecraft, mistral, openrouter, apertis, atessa, pooled, anyapi, dashscope, cohere, gemini, bedrock, anthropic]
+  - name: bedrock-haiku
+    type: bedrock
+    region: ${AWS_REGION_NAME}
+    access_key: ${AWS_ACCESS_KEY_ID}
+    secret_key: ${AWS_SECRET_ACCESS_KEY}
+    model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+
+# Primary provider + fallback order — free/cheap providers first; bedrock last (AWS-hosted Anthropic)
+fallback_chain: [apmix, groq, dahl, cerebras, tokenharbor, aihubmix, codecraft, mistral, openrouter, apertis, atessa, pooled, anyapi, dashscope, cohere, gemini, bedrock-haiku, bedrock]
 
 max_retries: 3
 cooldown_seconds: 60
