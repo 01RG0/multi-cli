@@ -57,7 +57,7 @@ providers:
     type: openai_compat
     base_url: ${POOLED_BASE_URL}
     api_key: ${POOLED_API_KEY}
-    model: deepseek-v4-flash-official
+    model: MiniMax-M3-Official
 
   - name: anyapi
     type: openai_compat
