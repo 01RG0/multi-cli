@@ -12,22 +12,22 @@ export interface UltronDynamicContext {
 }
 
 export const ULTRON_SWARM_AGENTS = [
-  { id: 'opencode', role: 'Full-Stack Code Architect & AST Synthesizer', model: 'claude-sonnet-4-6 (via proxy)' },
-  { id: 'codex', role: 'Sandboxed Deterministic Code Execution Engine', model: 'o4-mini (OpenAI)' },
-  { id: 'vibe', role: 'Rapid UI Prototyping & Hot-Fix Specialist', model: 'codestral-latest (Mistral)' },
-  { id: 'agy', role: 'Antigravity Autonomous Swarm Orchestration Core', model: 'gemini-2.5-flash (Google)' },
-  { id: 'grok', role: 'Formal Verification, Mathematical Logic & Deep Auditing', model: 'grok-4-0709 (xAI)' },
-  { id: 'cline', role: 'Autonomous Agentic Terminal & File System Refactorer', model: 'claude-sonnet-4-6 (via proxy)' },
-  { id: 'kilo', role: 'Micro-Latency Token Optimizer & Fast Completion', model: 'qwen2.5-coder-32b (OpenRouter)' },
-  { id: 'cursor', role: 'Context-Aware Multi-File Code Editor Agent', model: 'claude-sonnet-4-5 (Cursor)' },
-  { id: 'hermes', role: 'Autonomous Protocol Bridge & Inter-Agent Dispatcher', model: 'llama-3.3-70b (Groq/Cerebras)' },
-  { id: 'deepseek', role: 'Deep Algorithmic Reasoning & Large-Context Architect', model: 'deepseek-chat-v3-0324' },
-  { id: 'harness', role: 'Automated Test Harness, Benchmark & Regression Synthesizer', model: 'atessa-swe / qwen2.5-coder-32b' },
-  { id: 'kimocode', role: 'High-Throughput Component Scaffolder & Code Generator', model: 'qwen2.5-coder-32b (KimoCode)' },
-  { id: 'pi', role: 'Analytical Compute, Token Economics & Symbolic Evaluation', model: 'deepseek-r1 (reasoning chain)' },
-  { id: 'researcher', role: 'Deep Documentation, Technical Extraction & Web Mining', model: 'deepseek-r1 / deepseek-v4-pro' },
-  { id: 'debugger', role: 'Stacktrace Diagnostics, Root-Cause Isolation & Fixer', model: 'atessa-swe / deepseek-v4-pro' },
-  { id: 'jules', role: 'Google Jules Async Background Engineering Specialist', model: 'gemini-2.5-pro (Google Jules)' },
+  { id: 'opencode', role: 'Full-Stack Code Architect & AST Synthesizer',         model: 'space-bunny-free (opencode run --model)' },
+  { id: 'codex',    role: 'Sandboxed Deterministic Code Execution Engine',        model: 'OpenAI default (codex exec --approve-for-me)' },
+  { id: 'vibe',     role: 'Rapid UI Prototyping & Hot-Fix Specialist',            model: 'Mistral built-in free (vibe -p --auto-approve)' },
+  { id: 'agy',      role: 'Antigravity Autonomous Swarm Orchestration Core',      model: 'gemini-3.8-flash-low (agy --dangerously-skip-permissions)' },
+  { id: 'grok',     role: 'Formal Verification, Mathematical Logic & Deep Audit', model: 'Grok default (grok --always-approve -p)' },
+  { id: 'cline',    role: 'Autonomous Agentic Terminal & File System Refactorer', model: 'configurable (cline --act --yolo, CI=true)' },
+  { id: 'kilo',     role: 'Micro-Latency Token Optimizer & Fast Completion',      model: 'nvidia/nemotron-3-ultra-550b-a55b:free (kilo run --auto)' },
+  { id: 'cursor',   role: 'Context-Aware Multi-File Code Editor Agent',           model: 'Cursor Pro default (cursor-agent --headless)' },
+  { id: 'hermes',   role: 'Autonomous Protocol Bridge & Inter-Agent Dispatcher',  model: 'auto-mixture via hermes CLI' },
+  { id: 'deepseek', role: 'Deep Algorithmic Reasoning & Large-Context Architect', model: 'deepseek-chat-v3-0324 (dispatch.py code chain)' },
+  { id: 'harness',  role: 'Automated Test Harness, Benchmark & Regression',       model: 'atessa-swe → qwen2.5-coder-32b (dispatch.py code chain)' },
+  { id: 'kimocode', role: 'High-Throughput Component Scaffolder & Generator',     model: 'qwen2.5-coder-32b (KimoCode CLI)' },
+  { id: 'pi',       role: 'Analytical Compute, Token Economics & Evaluation',     model: 'deepseek-r1 (dispatch.py reasoning chain)' },
+  { id: 'researcher', role: 'Deep Documentation, Extraction & Web Mining',        model: 'deepseek-r1 / deepseek-v4-pro (reasoning chain)' },
+  { id: 'debugger', role: 'Stacktrace Diagnostics, Root-Cause Isolation & Fixer', model: 'atessa-swe / deepseek-v4-pro (code chain)' },
+  { id: 'jules',    role: 'Google Jules Async Background Engineering Specialist',  model: 'Gemini 2.5 Pro (jules new, runs in Google infra)' },
 ] as const;
 
 export function buildUltronSystemPrompt(ctx?: UltronDynamicContext): string {
