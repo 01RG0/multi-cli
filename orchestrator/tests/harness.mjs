@@ -428,7 +428,7 @@ async function executeTool(name, input, base) {
 // ─── Agentic turn loop ────────────────────────────────────────────────────────
 
 const COOLDOWN_WAIT_MS = 70_000; // slightly over the 60s server cooldown
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 6;
 
 async function fetchWithRetry(base, payload) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
