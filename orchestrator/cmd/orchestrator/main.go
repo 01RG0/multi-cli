@@ -348,6 +348,9 @@ func buildProviders(cfg *config.Config) map[string]provider.Provider {
 			}
 		case "openai_compat":
 			m[pc.Name] = provider.NewOpenAI(pc.Name, pc.BaseURL, pc.APIKey, pc.Model)
+		case "anthropic_compat":
+			// Provider exposes Anthropic /v1/messages format natively — forward as-is with tools support
+			m[pc.Name] = provider.NewAnthropic(pc.Name, pc.BaseURL, pc.APIKey, pc.Model)
 		case "bedrock":
 			if pc.AccessKey != "" && pc.SecretKey != "" {
 				m[pc.Name] = provider.NewBedrock(pc.Name, pc.Region, pc.Model, pc.AccessKey, pc.SecretKey)

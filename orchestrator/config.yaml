@@ -6,7 +6,7 @@ providers:
     model: qwen/qwen3.8-27b
 
   - name: tokenharbor
-    type: openai_compat
+    type: anthropic_compat
     base_url: ${TOKEN_HARBOR_BASE_URL}
     api_key: ${TOKEN_HARBOR_API_KEY}
     model: gpt-4o-mini
@@ -18,13 +18,13 @@ providers:
     model: gpt-4o-mini
 
   - name: aihubmix
-    type: openai_compat
+    type: anthropic_compat
     base_url: ${AIHUBMIX_BASE_URL}
     api_key: ${AIHUBMIX_API_KEY}
     model: gpt-4o-mini
 
   - name: apmix
-    type: openai_compat
+    type: anthropic_compat
     base_url: https://api.apmix.ai/v1
     api_key: ${APMIX_API_KEY}
     model: gpt-6-luna-free
@@ -60,7 +60,7 @@ providers:
     model: command-r
 
   - name: apertis
-    type: openai_compat
+    type: anthropic_compat
     base_url: ${APERTIS_BASE_URL}
     api_key: ${APERTIS_API_KEY}
     model: gpt-4o-mini

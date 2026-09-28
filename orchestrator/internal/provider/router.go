@@ -113,7 +113,12 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 			break
 		}
 		st.Errors.Add(1)
-		r.setCooldown(p.Name())
+		// Only cooldown on rate-limit (429) or transient server errors (5xx).
+		// Format/capability errors (4xx) mean this provider is the wrong choice
+		// for this request type — skip it but don't penalize it for future requests.
+		if isRateLimit(err) || isTransient(err) {
+			r.setCooldown(p.Name())
+		}
 		lastErr = err
 	}
 	if lastErr == nil {

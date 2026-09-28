@@ -175,7 +175,7 @@ func toOpenAIMessages(msgs []Message) []openAIMessage {
 
 func (p *OpenAIProvider) Complete(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	model := req.Model
-	if model == "" {
+	if model == "" || isAnthropicModel(model) {
 		model = p.model
 	}
 
@@ -252,7 +252,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 	req.Stream = true
 
 	model := req.Model
-	if model == "" {
+	if model == "" || isAnthropicModel(model) {
 		model = p.model
 	}
 	body := openAIRequest{
@@ -319,4 +319,10 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req ChatRequest) (<-chan St
 		}
 	}()
 	return ch, nil
+}
+
+// isAnthropicModel returns true for model IDs that are Anthropic-native and
+// won't be recognized by OpenAI-compatible providers.
+func isAnthropicModel(m string) bool {
+	return strings.HasPrefix(m, "claude-") || strings.HasPrefix(m, "us.anthropic.")
 }

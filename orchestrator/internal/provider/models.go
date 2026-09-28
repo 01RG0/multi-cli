@@ -50,19 +50,16 @@ var ModelTier = map[string]int{
 	"llama-3.2-3b-preview":          1,
 }
 
-// BestModel returns the highest-tier model from the available list.
-// Falls back to the first available model if none are in the tier map.
+// BestModel returns the highest-tier known model from the available list.
+// Returns "" if no model in the list is in the ModelTier map, preserving the configured default.
 func BestModel(available []string) string {
-	best, bestTier := "", -1
+	best, bestTier := "", 0
 	for _, m := range available {
 		tier := ModelTier[m]
 		if tier > bestTier {
 			bestTier = tier
 			best = m
 		}
-	}
-	if best == "" && len(available) > 0 {
-		return available[0]
 	}
 	return best
 }

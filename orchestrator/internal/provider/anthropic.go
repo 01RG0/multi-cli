@@ -26,6 +26,9 @@ func NewAnthropic(name, baseURL, apiKey, model string) *AnthropicProvider {
 	if baseURL == "" {
 		baseURL = anthropicBaseURL
 	}
+	// Strip trailing /v1 — we append /v1/messages ourselves.
+	// Providers configured as anthropic_compat often include /v1 in their base_url.
+	baseURL = strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
 	return &AnthropicProvider{
 		name:    name,
 		baseURL: strings.TrimRight(baseURL, "/"),
