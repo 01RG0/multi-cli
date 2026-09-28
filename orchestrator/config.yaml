@@ -53,11 +53,23 @@ providers:
     api_key: ${ATESSA_API_KEY}
     model: laguna-s-2.1
 
-  - name: pooled
+  - name: minimax-m3
     type: openai_compat
     base_url: ${POOLED_BASE_URL}
     api_key: ${POOLED_API_KEY}
     model: MiniMax-M3-Official
+
+  - name: minimax-m2.7
+    type: openai_compat
+    base_url: 
+    api_key: 
+    model: MiniMax-M2.7-Official
+
+  - name: minimax-m2.5
+    type: openai_compat
+    base_url: 
+    api_key: 
+    model: MiniMax-M2.5-Official
 
   - name: anyapi
     type: openai_compat
@@ -98,7 +110,7 @@ providers:
     model: us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Primary provider + fallback order — free/cheap providers first; bedrock last (AWS-hosted Anthropic)
-fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, pooled, anyapi, dahl, groq, openrouter, mistral, cohere, gemini, bedrock-haiku, bedrock]
+fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, minimax-m3, minimax-m2.7, minimax-m2.5, anyapi, dahl, groq, openrouter, mistral, cohere, gemini, bedrock-haiku, bedrock]
 
 max_retries: 3
 cooldown_seconds: 60
