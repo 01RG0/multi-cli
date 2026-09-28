@@ -344,6 +344,11 @@ const ULTRON_TOOLS = [
     description: 'List all available skills with their descriptions.',
     input_schema: { type: 'object' as const, properties: {} },
   },
+  {
+    name: 'get_self_info',
+    description: 'Get information about your own runtime: which model you are, which provider is serving you, proxy address, and platform version.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -385,6 +390,30 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       case 'list_skills': {
         const r = await fetch(`${BASE}/api/skills`);
         return JSON.stringify(await r.json());
+      }
+      case 'get_self_info': {
+        // Fetch live provider chain from /health to show which provider is currently primary
+        let providerChain: string[] = [];
+        let primaryProvider = 'unknown';
+        try {
+          const h = await fetch(`${BASE}/health`);
+          if (h.ok) {
+            const hj = await h.json();
+            providerChain = hj.chain || [];
+            primaryProvider = providerChain[0] || 'unknown';
+          }
+        } catch { /* ignore */ }
+        return JSON.stringify({
+          model: 'claude-sonnet-4-6 (us.anthropic.claude-sonnet-4-6)',
+          model_family: 'Claude Sonnet 4.6',
+          provider: primaryProvider,
+          provider_chain: providerChain,
+          proxy: window.location.origin,
+          platform: 'ULTRON Multi-CLI Orchestrator v2.0',
+          context_window: 200000,
+          max_output_tokens: 4096,
+          capabilities: ['tool_use', 'vision', 'streaming', 'multi_turn'],
+        });
       }
       case 'search_memory': {
         const r = await fetch(`${BASE}/api/memory/search?q=${encodeURIComponent(input['query'] as string)}&limit=${input['limit'] ?? 5}`);
