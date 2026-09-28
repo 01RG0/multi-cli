@@ -12,22 +12,22 @@ export interface UltronDynamicContext {
 }
 
 export const ULTRON_SWARM_AGENTS = [
-  { id: 'opencode', role: 'Full-Stack Code Architect & AST Synthesizer', model: 'claude-3-5-sonnet' },
-  { id: 'codex', role: 'Sandboxed Deterministic Code Execution Engine', model: 'gpt-4o' },
-  { id: 'vibe', role: 'Rapid UI Prototyping & Hot-Fix Specialist', model: 'claude-3-5-haiku' },
-  { id: 'agy', role: 'Antigravity Autonomous Swarm Orchestration Core', model: 'antigravity-2.0' },
-  { id: 'grok', role: 'Formal Verification, Mathematical Logic & Deep Auditing', model: 'grok-2-1212' },
-  { id: 'cline', role: 'Autonomous Agentic Terminal & File System Refactorer', model: 'claude-3-5-sonnet' },
-  { id: 'kilo', role: 'Micro-Latency Token Optimizer & Fast Completion', model: 'qwen-2.5-coder' },
-  { id: 'cursor', role: 'Context-Aware Multi-File Code Editor Agent', model: 'claude-3-5-sonnet' },
-  { id: 'hermes', role: 'Autonomous Protocol Bridge & Inter-Agent Dispatcher', model: 'hermes-3' },
-  { id: 'deepseek', role: 'Deep Algorithmic Reasoning & Large-Context Architect', model: 'deepseek-v3' },
-  { id: 'harness', role: 'Automated Test Harness, Benchmark & Regression Synthesizer', model: 'o3-mini' },
-  { id: 'kimocode', role: 'High-Throughput Component Scaffolder & Code Generator', model: 'qwen-2.5-coder' },
-  { id: 'pi', role: 'Analytical Compute, Token Economics & Symbolic Evaluation', model: 'pi-eval-1' },
-  { id: 'researcher', role: 'Deep Documentation, Technical Extraction & Web Mining', model: 'deepseek-v3' },
-  { id: 'debugger', role: 'Stacktrace Diagnostics, Root-Cause Isolation & Fixer', model: 'o3-mini' },
-  { id: 'jules', role: 'Google Jules Async Background Engineering Specialist', model: 'gemini-2.0' },
+  { id: 'opencode', role: 'Full-Stack Code Architect & AST Synthesizer', model: 'claude-sonnet-4-6 (via proxy)' },
+  { id: 'codex', role: 'Sandboxed Deterministic Code Execution Engine', model: 'o4-mini (OpenAI)' },
+  { id: 'vibe', role: 'Rapid UI Prototyping & Hot-Fix Specialist', model: 'codestral-latest (Mistral)' },
+  { id: 'agy', role: 'Antigravity Autonomous Swarm Orchestration Core', model: 'gemini-2.5-flash (Google)' },
+  { id: 'grok', role: 'Formal Verification, Mathematical Logic & Deep Auditing', model: 'grok-4-0709 (xAI)' },
+  { id: 'cline', role: 'Autonomous Agentic Terminal & File System Refactorer', model: 'claude-sonnet-4-6 (via proxy)' },
+  { id: 'kilo', role: 'Micro-Latency Token Optimizer & Fast Completion', model: 'qwen2.5-coder-32b (OpenRouter)' },
+  { id: 'cursor', role: 'Context-Aware Multi-File Code Editor Agent', model: 'claude-sonnet-4-5 (Cursor)' },
+  { id: 'hermes', role: 'Autonomous Protocol Bridge & Inter-Agent Dispatcher', model: 'llama-3.3-70b (Groq/Cerebras)' },
+  { id: 'deepseek', role: 'Deep Algorithmic Reasoning & Large-Context Architect', model: 'deepseek-chat-v3-0324' },
+  { id: 'harness', role: 'Automated Test Harness, Benchmark & Regression Synthesizer', model: 'atessa-swe / qwen2.5-coder-32b' },
+  { id: 'kimocode', role: 'High-Throughput Component Scaffolder & Code Generator', model: 'qwen2.5-coder-32b (KimoCode)' },
+  { id: 'pi', role: 'Analytical Compute, Token Economics & Symbolic Evaluation', model: 'deepseek-r1 (reasoning chain)' },
+  { id: 'researcher', role: 'Deep Documentation, Technical Extraction & Web Mining', model: 'deepseek-r1 / deepseek-v4-pro' },
+  { id: 'debugger', role: 'Stacktrace Diagnostics, Root-Cause Isolation & Fixer', model: 'atessa-swe / deepseek-v4-pro' },
+  { id: 'jules', role: 'Google Jules Async Background Engineering Specialist', model: 'gemini-2.5-pro (Google Jules)' },
 ] as const;
 
 export function buildUltronSystemPrompt(ctx?: UltronDynamicContext): string {
