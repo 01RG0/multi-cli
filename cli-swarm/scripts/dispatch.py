@@ -44,6 +44,23 @@ SKILL_DIR = Path(__file__).parent.parent
 DETECT_SH = SKILL_DIR / "scripts" / "detect_agents.sh"
 LOG_SCRIPT = SKILL_DIR / "scripts" / "log_delegation.py"
 PROVIDERS_JSON = SKILL_DIR / "references" / "providers.json"
+CLI_MODELS_JSON = SKILL_DIR / "cli_models.json"
+
+
+def load_cli_models() -> dict:
+    """Load runtime model overrides from cli_models.json. Falls back to {} on error."""
+    try:
+        if CLI_MODELS_JSON.is_file():
+            with open(CLI_MODELS_JSON) as f:
+                data = json.load(f)
+            return {k: v for k, v in data.items() if not k.startswith("_") and v}
+    except Exception:
+        pass
+    return {}
+
+
+# Load once at startup — ULTRON can update cli_models.json to change models live
+_CLI_MODELS = load_cli_models()
 
 # Jarvis .env default locations (checked in order)
 DEFAULT_ENV_PATHS = [
@@ -69,18 +86,44 @@ LIMIT_PATTERNS = [
     "invalid_api_key", "access denied",
 ]
 
+def _opencode_cmd(p, cwd):
+    model = _CLI_MODELS.get("opencode", "opencode/space-bunny-free")
+    return ["opencode", "run", "--model", model, p]
+
+def _agy_cmd(p, cwd):
+    model = _CLI_MODELS.get("agy", "gemini-3.8-flash-low")
+    return ["agy", "--dangerously-skip-permissions", "--model", model, "--add-dir", str(cwd), "--print", p]
+
+def _kilo_cmd(p, cwd):
+    model = _CLI_MODELS.get("kilo")
+    if model:
+        return ["kilo", "run", "--auto", "--model", model, p]
+    return ["kilo", "run", "--auto", p]
+
+def _vibe_cmd(p, cwd):
+    model = _CLI_MODELS.get("vibe")
+    if model:
+        return ["vibe", "-p", p, "--model", model, "--auto-approve"]
+    return ["vibe", "-p", p, "--auto-approve"]
+
+def _grok_cmd(p, cwd):
+    model = _CLI_MODELS.get("grok")
+    if model:
+        return ["grok", "--always-approve", "--model", model, "-p", p]
+    return ["grok", "--always-approve", "-p", p]
+
 CLI_INVOCATION = {
     "codex":    lambda p, cwd: ["codex", "exec", "--approve-for-me", p],
-    "kilo":     lambda p, cwd: ["kilo", "run", "--auto", p],
-    "agy":      lambda p, cwd: ["agy", "--dangerously-skip-permissions", "--model", "gemini-3.8-flash-low", "--add-dir", str(cwd), "--print", p],
+    "kilo":     _kilo_cmd,
+    "agy":      _agy_cmd,
     "freebuff": lambda p, cwd: ["freebuff", p],
     "cursor":   lambda p, cwd: ["cursor-agent", "--headless", p],
-    "vibe":     lambda p, cwd: ["vibe", "-p", p, "--auto-approve"],
-    "grok":     lambda p, cwd: ["grok", "--always-approve", "-p", p],
+    "vibe":     _vibe_cmd,
+    "grok":     _grok_cmd,
     "jules":    lambda p, cwd: ["jules", "new", p],
     "cline":    lambda p, cwd: ["cline", "--act", "--yolo", p],
     "hermes":   lambda p, cwd: ["hermes", p],
-    "opencode": lambda p, cwd: ["opencode", "run", "--model", "opencode/space-bunny-free", p],
+    "opencode": _opencode_cmd,
 }
 
 # Per-CLI env overrides applied on top of os.environ.

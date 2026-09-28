@@ -1,0 +1,14 @@
+{
+  "_note": "Runtime model overrides for each CLI. Edit here or via ULTRON's update_cli_model tool. dispatch.py loads this at startup.",
+  "opencode": "opencode/space-bunny-free",
+  "kilo": null,
+  "agy": "gemini-3.8-flash-low",
+  "vibe": null,
+  "grok": null,
+  "codex": null,
+  "cline": null,
+  "cursor": null,
+  "hermes": null,
+  "jules": null,
+  "freebuff": null
+}

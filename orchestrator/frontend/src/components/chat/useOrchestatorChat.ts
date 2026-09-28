@@ -349,6 +349,26 @@ const ULTRON_TOOLS = [
     description: 'Get information about your own runtime: which model you are, which provider is serving you, proxy address, and platform version.',
     input_schema: { type: 'object' as const, properties: {} },
   },
+  {
+    name: 'get_cli_models',
+    description: 'Get the current model configuration for each CLI agent in the swarm. Shows which model each CLI is using and which ones are on auto-select.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    name: 'update_cli_model',
+    description: 'Update the model used by one or more CLI agents. Set to null to revert to auto/default. Changes take effect on the next dispatch.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        updates: {
+          type: 'object',
+          description: 'Map of cli_name → model_string (or null for auto). E.g. {"opencode": "opencode/deepseek-v4-free", "agy": null}',
+          additionalProperties: true,
+        },
+      },
+      required: ['updates'],
+    },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -389,6 +409,21 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
       case 'list_skills': {
         const r = await fetch(`${BASE}/api/skills`);
+        return JSON.stringify(await r.json());
+      }
+      case 'get_cli_models': {
+        const r = await fetch(`${BASE}/api/cli/models`);
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
+        return JSON.stringify(await r.json());
+      }
+      case 'update_cli_model': {
+        const updates = input['updates'] as Record<string, string | null>;
+        const r = await fetch(`${BASE}/api/cli/models`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
         return JSON.stringify(await r.json());
       }
       case 'get_self_info': {

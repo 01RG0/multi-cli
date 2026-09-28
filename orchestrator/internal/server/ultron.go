@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -1003,6 +1004,58 @@ func (s *Server) handleProviderStats(w http.ResponseWriter, r *http.Request) {
 // handleTableStats returns row counts for real SQLite tables used in the
 // mini memory graph visualization in the dashboard.
 // GET /api/stats/tables → {"tasks":N,"memory_nodes":N,"skills":N}
+// ─── CLI model config endpoint ────────────────────────────────────────────────
+// GET  /api/cli/models  → returns current cli_models.json
+// POST /api/cli/models  → merges patch into cli_models.json and saves
+
+const cliModelsPath = "../cli-swarm/cli_models.json"
+
+func (s *Server) handleCLIModels(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if handleCORSPreflight(w, r, "GET, POST") {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		data, err := os.ReadFile(cliModelsPath)
+		if err != nil {
+			// Return empty object if file missing
+			json.NewEncoder(w).Encode(map[string]any{})
+			return
+		}
+		w.Write(data)
+
+	case http.MethodPost:
+		var patch map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+			http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Load existing
+		existing := map[string]any{}
+		if data, err := os.ReadFile(cliModelsPath); err == nil {
+			_ = json.Unmarshal(data, &existing)
+		}
+		// Merge patch (null value = unset/auto)
+		for k, v := range patch {
+			if k == "_note" {
+				continue
+			}
+			existing[k] = v
+		}
+		out, _ := json.MarshalIndent(existing, "", "  ")
+		if err := os.WriteFile(cliModelsPath, out, 0644); err != nil {
+			http.Error(w, "write failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "updated": patch})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleTableStats(w http.ResponseWriter, r *http.Request) {
 	corsJSON(w)
 	if handleCORSPreflight(w, r, "GET") {
