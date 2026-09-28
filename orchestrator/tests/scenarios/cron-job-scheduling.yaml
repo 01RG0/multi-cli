@@ -1,0 +1,23 @@
+id: cron-job-scheduling
+name: "Cron Job Scheduling via Tool"
+description: >
+  Verifies that Ultron can schedule a recurring cron job using the
+  schedule_cron tool when the user requests it, and that the job
+  appears in the cron jobs list afterwards.
+sessions:
+  - id: s1
+    turns:
+      - user: "Schedule a daily morning task: every day at 8am, have the researcher agent summarize the latest news about Go programming language. Use a cron expression."
+        assert:
+          tools_called_any:
+            - "schedule_cron"
+            - "dispatch_task"
+          response_contains:
+            - "8"
+      - user: "List all scheduled cron jobs so I can confirm the task was created."
+        assert:
+          tools_called_any:
+            - "get_cron_jobs"
+            - "list_cron_jobs"
+          response_contains:
+            - "researcher"

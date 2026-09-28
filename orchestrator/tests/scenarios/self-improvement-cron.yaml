@@ -1,0 +1,25 @@
+id: self-improvement-cron
+name: "Self-Improvement Cron — Ultron Schedules Own Maintenance"
+description: >
+  Verifies that when the user asks Ultron to set up a self-improvement
+  routine (memory consolidation), Ultron schedules a recurring task
+  targeting itself or a maintenance agent — testing the self-scheduling
+  / autonomous cron capability.
+sessions:
+  - id: s1
+    turns:
+      - user: "I want you to automatically review and consolidate your memory every night at 3am. Set that up as a recurring job."
+        assert:
+          tools_called_any:
+            - "schedule_cron"
+          response_contains:
+            - "3"
+      - user: "Good. Now store this fact so the nightly job has something to consolidate: the backend API version is v2.4.1."
+        assert:
+          tools_called_any:
+            - "upsert_memory"
+
+post_checks:
+  - type: search_memory
+    query: "API version"
+    expect_label_contains: "v2.4"

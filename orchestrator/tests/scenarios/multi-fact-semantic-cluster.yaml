@@ -1,0 +1,37 @@
+id: multi-fact-semantic-cluster
+name: "Semantic Cluster Retrieval — Related Facts"
+description: >
+  Stores several related facts about the same topic (a project called "Nova")
+  across multiple turns, then verifies that a single search query retrieves
+  all of them together — testing that semantically related nodes surface
+  as a cluster rather than being siloed.
+sessions:
+  - id: s1
+    turns:
+      - user: "Remember: the Nova project uses a microservices architecture."
+        assert:
+          tools_called_any:
+            - "upsert_memory"
+      - user: "Also remember: Nova's database is PostgreSQL 16 with partitioned tables."
+        assert:
+          tools_called_any:
+            - "upsert_memory"
+      - user: "One more Nova fact: the team deploys Nova to AWS EKS every Friday."
+        assert:
+          tools_called_any:
+            - "upsert_memory"
+
+  - id: s2
+    turns:
+      - user: "Tell me everything you know about the Nova project."
+        assert:
+          tools_called_any:
+            - "search_memory"
+          response_contains:
+            - "Nova"
+            - "microservices"
+
+post_checks:
+  - type: search_memory
+    query: "Nova project"
+    expect_label_contains: "Nova"

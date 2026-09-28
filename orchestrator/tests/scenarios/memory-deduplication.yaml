@@ -1,0 +1,25 @@
+id: memory-deduplication
+name: "Memory Deduplication — Same Fact Upserted Twice"
+description: >
+  Verifies that storing the exact same preference twice does NOT create two
+  separate nodes. UpsertNode deduplicates by label+type (cosine > 0.85),
+  so the second upsert should update the existing node, not add a new one.
+sessions:
+  - id: s1
+    turns:
+      - user: "Remember this: my primary coding language is Rust."
+        assert:
+          tools_called_any:
+            - "upsert_memory"
+            - "update_core_memory"
+      - user: "Just to reinforce — please make sure you have saved that my primary coding language is Rust."
+        assert:
+          tools_called_any:
+            - "upsert_memory"
+            - "search_memory"
+            - "get_core_memory"
+
+post_checks:
+  - type: search_memory
+    query: "primary coding language"
+    expect_label_contains: "Rust"
