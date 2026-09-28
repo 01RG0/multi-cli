@@ -4,9 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 )
+
+// ghEnv returns the process environment with HOME forced to /home/rootuser
+// so that gh finds its auth config regardless of what systemd set HOME to.
+func ghEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if !strings.HasPrefix(e, "HOME=") {
+			out = append(out, e)
+		}
+	}
+	return append(out, "HOME=/home/rootuser")
+}
 
 // handleGitHubAPI proxies to `gh api`: POST /api/github/api
 // Body: { "method": "GET|POST|PATCH|PUT|DELETE", "endpoint": "/repos/...", "body": {...} }
@@ -48,7 +62,7 @@ func (s *Server) handleGitHubAPI(w http.ResponseWriter, r *http.Request) {
 	if bodyJSON != nil {
 		cmd.Stdin = strings.NewReader(string(bodyJSON))
 	}
-	cmd.Env = append(cmd.Environ(), "HOME=/home/rootuser")
+	cmd.Env = ghEnv()
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -93,7 +107,7 @@ func (s *Server) handleGitHubCLI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmd := exec.Command("gh", req.Args...)
-	cmd.Env = append(cmd.Environ(), "HOME=/home/rootuser")
+	cmd.Env = ghEnv()
 	if req.Cwd != "" {
 		cmd.Dir = req.Cwd
 	}
