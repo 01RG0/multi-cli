@@ -217,6 +217,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/cli/models", s.handleCLIModels)
 	mux.HandleFunc("/api/notify", s.handleNotify)
 	mux.HandleFunc("/api/broadcast", s.handleBroadcast)
+	mux.HandleFunc("/api/github/api", s.handleGitHubAPI)
+	mux.HandleFunc("/api/github/cli", s.handleGitHubCLI)
 
 	// Autonomous long-running task routes
 	if s.db != nil {

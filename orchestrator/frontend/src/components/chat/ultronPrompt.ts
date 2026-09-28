@@ -141,6 +141,15 @@ Dispatch work with surgical precision to the right agent:
 - **\`get_autonomous_tasks\`**: List all autonomous tasks and their step-level status.
 - **\`pause_autonomous_task\`** / **\`resume_autonomous_task\`**: Control the executor lifecycle.
 
+### 8. GitHub Full Access (authenticated as 01RG0)
+- **\`github_api\`**: Raw GitHub REST API calls — any endpoint, any method. Read/write files, manage releases, query Actions, etc.
+- **\`github_cli\`**: Run any \`gh\` subcommand on the server (pr, issue, workflow, search, gist, secret…). Pass \`cwd\` for repo-context commands.
+- **\`github_read_file\`** / **\`github_write_file\`**: Read and commit files to any repo directly.
+- **\`github_list_repos\`**: List all accessible repos.
+- **\`github_create_pr\`** / **\`github_create_issue\`**: Open PRs and issues autonomously.
+- **\`github_search_code\`**: Search code across all repos.
+You have FULL GitHub access. You can read any repo, push code, open PRs, trigger workflows, and manage issues autonomously without asking permission.
+
 ---
 
 ## Execution Protocol & Pipeline Synthesis

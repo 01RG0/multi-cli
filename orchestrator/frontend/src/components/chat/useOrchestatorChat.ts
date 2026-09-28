@@ -513,6 +513,115 @@ const ULTRON_TOOLS = [
       required: ['title', 'message', 'type'],
     },
   },
+  // ── GitHub tools ──────────────────────────────────────────────────────────────
+  {
+    name: 'github_api',
+    description: 'Make any GitHub REST API call as 01RG0. Full access to all repos. Use for reading/writing files, PRs, issues, releases, actions, etc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        method:   { type: 'string', enum: ['GET','POST','PATCH','PUT','DELETE'] },
+        endpoint: { type: 'string', description: 'GitHub API path, e.g. /repos/01RG0/multi-cli/contents/README.md' },
+        body:     { type: 'object', description: 'Request body for POST/PATCH/PUT' },
+      },
+      required: ['endpoint'],
+    },
+  },
+  {
+    name: 'github_cli',
+    description: 'Run any gh CLI subcommand (pr, repo, issue, workflow, search, gist, etc.). Returns stdout. Easier than REST for complex operations.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        args: { type: 'array', items: { type: 'string' }, description: 'gh args, e.g. ["repo","list","--json","name,url","--limit","20"]' },
+        cwd:  { type: 'string', description: 'Server working directory for repo-context commands, e.g. /home/rootuser/multi-cli/orchestrator' },
+      },
+      required: ['args'],
+    },
+  },
+  {
+    name: 'github_read_file',
+    description: 'Read a file from any GitHub repo. Returns decoded content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        owner: { type: 'string' },
+        repo:  { type: 'string' },
+        path:  { type: 'string', description: 'File path in repo, e.g. src/main.go' },
+        ref:   { type: 'string', description: 'Branch/tag/commit (default: main)' },
+      },
+      required: ['owner', 'repo', 'path'],
+    },
+  },
+  {
+    name: 'github_write_file',
+    description: 'Create or update a file in a GitHub repo.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        owner:   { type: 'string' },
+        repo:    { type: 'string' },
+        path:    { type: 'string' },
+        content: { type: 'string', description: 'Plain text content (auto base64-encoded)' },
+        message: { type: 'string', description: 'Commit message' },
+        branch:  { type: 'string', description: 'Target branch (default: main)' },
+        sha:     { type: 'string', description: 'Current file SHA — required for updates, omit for new files' },
+      },
+      required: ['owner', 'repo', 'path', 'content', 'message'],
+    },
+  },
+  {
+    name: 'github_list_repos',
+    description: 'List all repos accessible to 01RG0.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: { type: 'number', description: 'Max repos to return (default 30)' },
+      },
+    },
+  },
+  {
+    name: 'github_create_pr',
+    description: 'Create a pull request.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        owner: { type: 'string' },
+        repo:  { type: 'string' },
+        title: { type: 'string' },
+        body:  { type: 'string' },
+        head:  { type: 'string', description: 'Source branch' },
+        base:  { type: 'string', description: 'Target branch (default: main)' },
+      },
+      required: ['owner', 'repo', 'title', 'head'],
+    },
+  },
+  {
+    name: 'github_create_issue',
+    description: 'Create a GitHub issue.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        owner:  { type: 'string' },
+        repo:   { type: 'string' },
+        title:  { type: 'string' },
+        body:   { type: 'string' },
+        labels: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['owner', 'repo', 'title'],
+    },
+  },
+  {
+    name: 'github_search_code',
+    description: 'Search code across all GitHub repos.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Search query, e.g. "useState repo:01RG0/multi-cli"' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -844,6 +953,91 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
           },
         }));
         return JSON.stringify({ ok: true });
+      }
+      case 'github_api': {
+        const r = await fetch(`${BASE}/api/github/api`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: input['method'] || 'GET', endpoint: input['endpoint'], body: input['body'] }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'github_cli': {
+        const r = await fetch(`${BASE}/api/github/cli`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ args: input['args'], cwd: input['cwd'] }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'github_read_file': {
+        const ref = (input['ref'] as string) || 'main';
+        const r = await fetch(`${BASE}/api/github/api`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'GET', endpoint: `/repos/${input['owner']}/${input['repo']}/contents/${input['path']}?ref=${ref}` }),
+        });
+        const data = await r.json();
+        if (data.content) {
+          return JSON.stringify({ ...data, decoded_content: atob(data.content.replace(/\n/g, '')) });
+        }
+        return JSON.stringify(data);
+      }
+      case 'github_write_file': {
+        const encoded = btoa(unescape(encodeURIComponent(input['content'] as string)));
+        const body: Record<string, unknown> = {
+          message: input['message'],
+          content: encoded,
+          branch: input['branch'] || 'main',
+        };
+        if (input['sha']) body['sha'] = input['sha'];
+        const r = await fetch(`${BASE}/api/github/api`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'PUT', endpoint: `/repos/${input['owner']}/${input['repo']}/contents/${input['path']}`, body }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'github_list_repos': {
+        const limit = (input['limit'] as number) || 30;
+        const r = await fetch(`${BASE}/api/github/cli`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ args: ['repo', 'list', '--json', 'name,description,url,isPrivate,updatedAt', '--limit', String(limit)] }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'github_create_pr': {
+        const r = await fetch(`${BASE}/api/github/api`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'POST',
+            endpoint: `/repos/${input['owner']}/${input['repo']}/pulls`,
+            body: { title: input['title'], body: input['body'] || '', head: input['head'], base: input['base'] || 'main' },
+          }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'github_create_issue': {
+        const r = await fetch(`${BASE}/api/github/api`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'POST',
+            endpoint: `/repos/${input['owner']}/${input['repo']}/issues`,
+            body: { title: input['title'], body: input['body'] || '', labels: input['labels'] || [] },
+          }),
+        });
+        return JSON.stringify(await r.json());
+      }
+      case 'github_search_code': {
+        const r = await fetch(`${BASE}/api/github/api`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'GET', endpoint: `/search/code?q=${encodeURIComponent(input['query'] as string)}` }),
+        });
+        return JSON.stringify(await r.json());
       }
       default:
         return JSON.stringify({ error: `unknown tool: ${name}` });
