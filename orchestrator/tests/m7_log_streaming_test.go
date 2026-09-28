@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,15 +91,11 @@ func TestAPILogsEndpoint(t *testing.T) {
 func TestCLIAgentRunStreaming(t *testing.T) {
 	// Test RunStreaming with a simple command, e.g. echo or go
 	// We can use a CLIAgent with binary "go" or "powershell" or "cmd" depending on OS
-	var a *agent.CLIAgent
-	var prompt string
-	if runtime.GOOS == "windows" {
-		a = agent.New("echoer", "cmd", 10*time.Second)
-		prompt = "/c echo hello stdout"
-	} else {
-		a = agent.New("echoer", "sh", 10*time.Second)
-		prompt = "-c echo hello stdout"
-	}
+	// Use "echo" directly — it's available on both Linux and Windows (via cmd alias).
+	// resolveCommand appends the prompt as a single arg, so this becomes:
+	//   echo "hello stdout"
+	a := agent.New("echoer", "echo", 10*time.Second)
+	prompt := "hello stdout"
 
 	var lines []string
 	var streams []string
