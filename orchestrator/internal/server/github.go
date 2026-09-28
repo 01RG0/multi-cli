@@ -48,7 +48,7 @@ func (s *Server) handleGitHubAPI(w http.ResponseWriter, r *http.Request) {
 	if bodyJSON != nil {
 		cmd.Stdin = strings.NewReader(string(bodyJSON))
 	}
-	cmd.Env = append(cmd.Environ(), "HOME=/root")
+	cmd.Env = append(cmd.Environ(), "HOME=/home/rootuser")
 
 	out, err := cmd.Output()
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *Server) handleGitHubCLI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmd := exec.Command("gh", req.Args...)
-	cmd.Env = append(cmd.Environ(), "HOME=/root")
+	cmd.Env = append(cmd.Environ(), "HOME=/home/rootuser")
 	if req.Cwd != "" {
 		cmd.Dir = req.Cwd
 	}
