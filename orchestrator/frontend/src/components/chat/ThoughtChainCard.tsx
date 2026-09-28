@@ -51,7 +51,14 @@ function StepItem({ msg }: StepItemProps) {
 
   const { name, input } = msg.toolUse;
   const isDone = msg.status === 'done';
-  const isError = msg.status === 'error' || (msg.toolResult?.includes('"error"') ?? false);
+  // Bug 5 fix: only flag as error when top-level JSON has a truthy `error` key
+  const isError = msg.status === 'error' || (() => {
+    if (!msg.toolResult) return false;
+    try {
+      const parsed = JSON.parse(msg.toolResult);
+      return typeof parsed === 'object' && parsed !== null && 'error' in parsed && Boolean((parsed as Record<string, unknown>).error);
+    } catch { return false; }
+  })();
 
   const handleCopy = (e: React.MouseEvent, content: string) => {
     e.stopPropagation();

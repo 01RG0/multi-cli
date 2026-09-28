@@ -441,10 +441,24 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       }
       case 'get_queue_status': {
         const r = await fetch(`${BASE}/api/tasks`);
-        return JSON.stringify(await r.json());
+        const tasks = await r.json();
+        if (!Array.isArray(tasks)) return JSON.stringify(tasks);
+        const counts: Record<string, number> = {};
+        for (const t of tasks) {
+          const s = (t.Status || t.status || 'unknown') as string;
+          counts[s] = (counts[s] || 0) + 1;
+        }
+        const recent = tasks.slice(0, 5).map((t: Record<string, unknown>) => ({
+          id: t.ID || t.id,
+          status: t.Status || t.status,
+          prompt: String(t.Prompt || t.prompt || '').slice(0, 60),
+          agentId: t.AgentID || t.agentId,
+        }));
+        return JSON.stringify({ counts, total: tasks.length, recent });
       }
       case 'get_agent_status': {
         const r = await fetch(`${BASE}/api/agents/status`);
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}`, note: 'agents/status not available' });
         return JSON.stringify(await r.json());
       }
       case 'get_provider_health': {
@@ -914,37 +928,37 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             const toolUseBlocks = response.content.filter((b): b is ApiToolUse => b.type === 'tool_use');
             const toolResultBlocks: ApiToolResult[] = [];
 
-            for (const toolBlock of toolUseBlocks) {
+            // Bug 1 fix: add all placeholder cards at once to avoid React batching race
+            const toolCallMsgs: ChatMessage[] = toolUseBlocks.map((tb) => ({
+              id:        uid(),
+              key:       uid(),
+              role:      'tool_call' as const,
+              content:   `Executing ${tb.name}`,
+              toolUse:   { id: tb.id, name: tb.name, input: tb.input },
+              timestamp: Date.now(),
+              status:    'streaming' as const,
+            }));
+            setMessagesBySession((prev) => ({
+              ...prev,
+              [currentSessionId]: [...(prev[currentSessionId] || []), ...toolCallMsgs],
+            }));
+
+            for (let ti = 0; ti < toolUseBlocks.length; ti++) {
+              const toolBlock = toolUseBlocks[ti];
+              const msgId = toolCallMsgs[ti].id;
               if (abortController.signal.aborted) break;
               const startMs = Date.now();
-
-              // Show tool call card
-              const toolCallMsgId = uid();
-              const toolCallMsg: ChatMessage = {
-                id:        toolCallMsgId,
-                key:       toolCallMsgId,
-                role:      'tool_call',
-                content:   `Executing ${toolBlock.name}`,
-                toolUse:   { id: toolBlock.id, name: toolBlock.name, input: toolBlock.input },
-                timestamp: Date.now(),
-                status:    'streaming',
-              };
-
-              setMessagesBySession((prev) => ({
-                ...prev,
-                [currentSessionId]: [...(prev[currentSessionId] || []), toolCallMsg],
-              }));
 
               // Execute tool
               const result = await executeTool(toolBlock.name, toolBlock.input);
               const durationMs = Date.now() - startMs;
 
-              // Update tool call card
+              // Update this tool's card (msgId captured per-iteration — no race)
               setMessagesBySession((prev) => ({
                 ...prev,
                 [currentSessionId]: (prev[currentSessionId] || []).map((m) =>
-                  m.id === toolCallMsg.id
-                    ? { ...m, toolResult: result, toolDurationMs: durationMs, status: 'done' }
+                  m.id === msgId
+                    ? { ...m, toolResult: result, toolDurationMs: durationMs, status: 'done' as const }
                     : m,
                 ),
               }));
@@ -1014,6 +1028,12 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             lsSet(LS_CONVOS, conversationsBySession.current);
           } else {
             continueLoop = false;
+            // Bug 4 fix: trim conversation history to avoid unbounded token growth
+            const hist = conversationsBySession.current[currentSessionId];
+            if (hist && hist.length > 20) {
+              conversationsBySession.current[currentSessionId] = hist.slice(hist.length - 20);
+              lsSet(LS_CONVOS, conversationsBySession.current);
+            }
           }
         }
       } finally {
@@ -1051,6 +1071,28 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
       }
 
       if (targetUserMsg) {
+        // Bug 6 fix: trim API history back to just before the last user message
+        // to prevent the LLM from seeing duplicated history on regenerate
+        const hist = conversationsBySession.current[activeSessionId] || [];
+        let lastUserIdx = -1;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (hist[i].role === 'user' && typeof hist[i].content === 'string') {
+            lastUserIdx = i;
+            break;
+          }
+        }
+        if (lastUserIdx >= 0) {
+          conversationsBySession.current[activeSessionId] = hist.slice(0, lastUserIdx);
+          lsSet(LS_CONVOS, conversationsBySession.current);
+        }
+
+        // Remove UI messages after and including the regenerated user msg's response
+        const userMsgIdx = currentMsgs.indexOf(targetUserMsg);
+        setMessagesBySession((prev) => ({
+          ...prev,
+          [activeSessionId]: currentMsgs.slice(0, userMsgIdx + 1),
+        }));
+
         await sendMessage(targetUserMsg.content, targetUserMsg.attachments);
       }
     },
