@@ -7,6 +7,11 @@ import (
 )
 
 // ScoreModelName scores any model purely from its name — no hardcoded lookup table.
+// Known strong free alternatives (not necessarily top-scored but quality picks):
+//   aihubmix:  coding-kimi-k3-free, coding-glm-5.3-free, coding-minimax-m3-free
+//   tokenharbor: qwen3.8-flash:free, mimo-v2.6-flash:free
+//   atessa:    deepseek-v4.1-flash (0× weight, free)
+//   anyapi:    qwen/qwen3-coder:free
 // Higher = stronger/smarter. Works for new models automatically without code changes.
 func ScoreModelName(name string) int {
 	n := strings.ToLower(name)
@@ -98,8 +103,17 @@ func ScoreModelName(name string) int {
 	if containsAny(n, "grok-4", "grok-3") {
 		score += 5
 	}
-	if containsAny(n, "kimi-k3", "kimi-k2") {
-		score += 4
+	if containsAny(n, "kimi-k3") {
+		score += 8 // Kimi K3 is frontier-class
+	}
+	if containsAny(n, "kimi-k2") {
+		score += 5
+	}
+	if containsAny(n, "minimax-m3", "minimax-m2.7") {
+		score += 6
+	}
+	if containsAny(n, "glm-5.3", "glm-5.2") {
+		score += 5
 	}
 	if containsAny(n, "qwen3", "qwen3.8") {
 		score += 3
