@@ -36,14 +36,40 @@ interface GraphResponse {
   edges: BackendEdge[];
 }
 
-function normalizeType(t: string): MemType {
+const ALL_TYPES: MemType[] = ['episodic', 'semantic', 'working', 'procedural', 'index'];
+
+function hashType(seed: string): MemType {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) & 0xffff;
+  return ALL_TYPES[h % ALL_TYPES.length];
+}
+
+function normalizeType(t: string, fallbackSeed?: string): MemType {
   const lower = (t || '').toLowerCase();
   if (lower in TYPE_META) return lower as MemType;
-  if (lower.includes('episod') || lower === 'event' || lower === 'history') return 'episodic';
-  if (lower.includes('work') || lower === 'task' || lower === 'active') return 'working';
-  if (lower.includes('proc') || lower === 'rule' || lower === 'action' || lower === 'skill') return 'procedural';
-  if (lower.includes('idx') || lower === 'index' || lower === 'root') return 'index';
-  return 'semantic';
+  // episodic — history, events, conversations, observations
+  if (lower.includes('episod') || lower === 'event' || lower === 'history' ||
+      lower === 'feedback' || lower === 'observation' || lower === 'memory' ||
+      lower === 'conversation' || lower === 'chat' || lower === 'message' ||
+      lower === 'log' || lower === 'journal' || lower === 'diary') return 'episodic';
+  // working — active tasks, current context
+  if (lower.includes('work') || lower === 'task' || lower === 'active' ||
+      lower === 'current' || lower === 'context' || lower === 'wm' ||
+      lower === 'buffer' || lower === 'scratch' || lower === 'temp') return 'working';
+  // procedural — rules, skills, actions, tools
+  if (lower.includes('proc') || lower === 'rule' || lower === 'action' || lower === 'skill' ||
+      lower === 'step' || lower === 'tool_call' || lower === 'tool' || lower === 'function' ||
+      lower === 'procedure' || lower === 'plan' || lower === 'instruction') return 'procedural';
+  // index — pointers, catalogs, roots
+  if (lower.includes('idx') || lower === 'index' || lower === 'root' ||
+      lower === 'catalog' || lower === 'ref' || lower === 'pointer' ||
+      lower === 'link' || lower === 'anchor') return 'index';
+  // semantic — facts, knowledge, concepts
+  if (lower === 'fact' || lower === 'knowledge' || lower === 'concept' ||
+      lower === 'belief' || lower === 'entity' || lower === 'relation' ||
+      lower === 'info' || lower === 'data' || lower === 'note') return 'semantic';
+  // unknown type — hash the seed (type string, or fallback node id) for color variety
+  return hashType(lower || fallbackSeed || 'x');
 }
 
 async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -211,7 +237,7 @@ export default function MemoryNeuralGraph() {
         posCache.current.set(n.id, pos);
       }
 
-      const mType = normalizeType(n.type);
+      const mType = normalizeType(n.type, n.id);
       const connections = adj.get(n.id) || [];
       const activation = typeof n.confidence === 'number' && n.confidence > 0
         ? Math.min(1.0, Math.max(0.2, n.confidence))
