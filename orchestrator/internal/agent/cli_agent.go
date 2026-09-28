@@ -42,8 +42,8 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "codex":
 		a.args = []string{"exec", "--approve-for-me"}
 	case "cline":
-		// openrouter/auto routes through OpenRouter's best available free model
-		a.args = []string{"--auto-approve", "true", "-P", "openrouter", "-m", "openrouter/auto", "--message"}
+		// cline provider + openrouter/free = cline's native free model routing mode
+		a.args = []string{"--auto-approve", "true", "-P", "cline", "-m", "openrouter/free", "--message"}
 	case "kilo", "kilocode":
 		// kilo-auto/free auto-rotates across free models; --auto approves permissions
 		a.args = []string{"--auto", "run", "-m", "kilo/kilo-auto/free"}
