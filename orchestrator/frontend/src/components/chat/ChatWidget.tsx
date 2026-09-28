@@ -151,7 +151,7 @@ export function ChatWidget() {
                 </span>
               </div>
               <span className="text-[10px] font-mono text-zinc-500 hidden sm:block">
-                Claude 3.7 Sonnet · AWS Bedrock Proxy
+                Bedrock Proxy · Sonnet 4.6
               </span>
             </div>
           </div>

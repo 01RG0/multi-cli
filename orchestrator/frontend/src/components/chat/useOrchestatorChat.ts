@@ -497,6 +497,30 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+
+const LS_SESSIONS = 'ultron_sessions';
+const LS_MESSAGES = 'ultron_messages';
+const LS_CONVOS   = 'ultron_conversations';
+const MAX_MSGS_PER_SESSION = 50;
+
+function lsGet<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function lsSet(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // quota exceeded — silently ignore
+  }
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export interface UseOrchestatorChatReturn {
@@ -515,13 +539,27 @@ export interface UseOrchestatorChatReturn {
 }
 
 export function useOrchestatorChat(): UseOrchestatorChatReturn {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>({});
+  // Load persisted state from localStorage on first render
+  const [sessions, setSessions] = useState<ChatSession[]>(() => lsGet<ChatSession[]>(LS_SESSIONS) ?? []);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    const saved = lsGet<ChatSession[]>(LS_SESSIONS);
+    return saved && saved.length > 0 ? saved[0].id : null;
+  });
+  const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>(() => {
+    const saved = lsGet<Record<string, ChatMessage[]>>(LS_MESSAGES) ?? {};
+    // Cap each session at MAX_MSGS_PER_SESSION
+    const capped: Record<string, ChatMessage[]> = {};
+    for (const [k, v] of Object.entries(saved)) {
+      capped[k] = Array.isArray(v) ? v.slice(-MAX_MSGS_PER_SESSION) : [];
+    }
+    return capped;
+  });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Per-session Anthropic API conversation history
-  const conversationsBySession = useRef<Record<string, ApiMessage[]>>({});
+  // Per-session Anthropic API conversation history — restored from localStorage
+  const conversationsBySession = useRef<Record<string, ApiMessage[]>>(
+    lsGet<Record<string, ApiMessage[]>>(LS_CONVOS) ?? {}
+  );
   // Task IDs dispatched from this chat so we can listen for WS updates
   const dispatchedTaskIds = useRef<Set<string>>(new Set());
   // AbortController for stopping generation
@@ -529,6 +567,17 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
 
   // Active messages derived from current session
   const messages = activeSessionId ? messagesBySession[activeSessionId] || [] : [];
+
+  // ── Persist to localStorage whenever state changes ──
+  useEffect(() => { lsSet(LS_SESSIONS, sessions); }, [sessions]);
+  useEffect(() => {
+    // Cap before saving
+    const capped: Record<string, ChatMessage[]> = {};
+    for (const [k, v] of Object.entries(messagesBySession)) {
+      capped[k] = v.slice(-MAX_MSGS_PER_SESSION);
+    }
+    lsSet(LS_MESSAGES, capped);
+  }, [messagesBySession]);
 
   // ── Subscribe to store tasks for dispatched task updates ──
   const storeTasks = useSwarmStore((s) => s.tasks);
@@ -580,9 +629,11 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
     conversationsBySession.current[id] = [];
   }, []);
 
-  // ── Initialize first session on mount ──
+  // ── Initialize first session on mount — only if nothing was restored ──
   useEffect(() => {
-    startNewSession();
+    if (sessions.length === 0) {
+      startNewSession();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -712,6 +763,7 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
         role: 'user',
         content: promptForLLM,
       });
+      lsSet(LS_CONVOS, conversationsBySession.current);
 
       // Auto-title session from first user message
       const titleCandidate =
@@ -824,6 +876,7 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             role: 'assistant',
             content: response.content,
           });
+          lsSet(LS_CONVOS, conversationsBySession.current);
 
           // 5. Extract text blocks
           const textBlocks = response.content.filter((b): b is ApiTextBlock => b.type === 'text');
@@ -958,6 +1011,7 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
               role: 'user',
               content: toolResultBlocks,
             });
+            lsSet(LS_CONVOS, conversationsBySession.current);
           } else {
             continueLoop = false;
           }
