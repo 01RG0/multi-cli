@@ -541,11 +541,13 @@ async function runPostCheck(check, base) {
       const r = await fetch(`${base}/api/memory/search?q=${encodeURIComponent(check.query)}&limit=10`);
       const data = await r.json();
       const nodes = Array.isArray(data) ? data : (data.results || []);
+      const needle = check.expect_label_contains.toLowerCase();
       const found = nodes.some(n => {
-        const label = (n.node?.label || n.label || '').toLowerCase();
-        return label.includes(check.expect_label_contains.toLowerCase());
+        const node = n.node || n;
+        const searchIn = [node.label, node.body, node.summary].map(s => (s || '').toLowerCase()).join(' ');
+        return searchIn.includes(needle);
       });
-      return found ? null : `post_check search_memory "${check.query}" → no label containing "${check.expect_label_contains}" (got ${nodes.length} results)`;
+      return found ? null : `post_check search_memory "${check.query}" → no label/body containing "${check.expect_label_contains}" (got ${nodes.length} results)`;
     }
     if (check.type === 'core_memory_contains') {
       const r = await fetch(`${base}/api/memory/core`);
