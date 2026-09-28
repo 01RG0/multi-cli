@@ -18,7 +18,7 @@ export const ULTRON_SWARM_AGENTS = [
   { id: 'agy',      role: 'Antigravity Autonomous Swarm Orchestration Core',      model: 'gemini-3.8-flash-low (agy --dangerously-skip-permissions)' },
   { id: 'grok',     role: 'Formal Verification, Mathematical Logic & Deep Audit', model: 'Grok default (grok --always-approve -p)' },
   { id: 'cline',    role: 'Autonomous Agentic Terminal & File System Refactorer', model: 'configurable (cline --act --yolo, CI=true)' },
-  { id: 'kilo',     role: 'Micro-Latency Token Optimizer & Fast Completion',      model: 'nvidia/nemotron-3-ultra-550b-a55b:free (kilo run --auto)' },
+  { id: 'kilo',     role: 'Micro-Latency Token Optimizer & Fast Completion',      model: 'auto-free model selection (kilo run --auto)' },
   { id: 'cursor',   role: 'Context-Aware Multi-File Code Editor Agent',           model: 'Cursor Pro default (cursor-agent --headless)' },
   { id: 'hermes',   role: 'Autonomous Protocol Bridge & Inter-Agent Dispatcher',  model: 'auto-mixture via hermes CLI' },
   { id: 'deepseek', role: 'Deep Algorithmic Reasoning & Large-Context Architect', model: 'deepseek-chat-v3-0324 (dispatch.py code chain)' },

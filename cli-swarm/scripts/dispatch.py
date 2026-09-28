@@ -71,7 +71,7 @@ LIMIT_PATTERNS = [
 
 CLI_INVOCATION = {
     "codex":    lambda p, cwd: ["codex", "exec", "--approve-for-me", p],
-    "kilo":     lambda p, cwd: ["kilo", "run", "--auto", "--model", "kilo/nvidia/nemotron-3-ultra-550b-a55b:free", p],
+    "kilo":     lambda p, cwd: ["kilo", "run", "--auto", p],
     "agy":      lambda p, cwd: ["agy", "--dangerously-skip-permissions", "--model", "gemini-3.8-flash-low", "--add-dir", str(cwd), "--print", p],
     "freebuff": lambda p, cwd: ["freebuff", p],
     "cursor":   lambda p, cwd: ["cursor-agent", "--headless", p],
