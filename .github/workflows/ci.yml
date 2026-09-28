@@ -95,7 +95,8 @@ jobs:
           script: |
             set -e
             cd /home/rootuser/multi-cli
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             cd orchestrator
             go build -o orchestrator ./cmd/orchestrator/
             fuser -k 8080/tcp 2>/dev/null || true

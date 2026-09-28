@@ -42,9 +42,11 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "codex":
 		a.args = []string{"exec", "--approve-for-me"}
 	case "cline":
-		a.args = []string{"--auto-approve", "true", "--message"}
+		// openrouter/auto routes through OpenRouter's best available free model
+		a.args = []string{"--auto-approve", "true", "-P", "openrouter", "-m", "openrouter/auto", "--message"}
 	case "kilo", "kilocode":
-		a.args = []string{"--auto", "run"}
+		// kilo-auto/free auto-rotates across free models; --auto approves permissions
+		a.args = []string{"--auto", "run", "-m", "kilo/kilo-auto/free"}
 	case "vibe":
 		a.args = []string{"--auto-approve", "-p"}
 	case "agy", "researcher", "debugger":
@@ -53,7 +55,8 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 		if a.binary == "" {
 			a.binary = "hermes"
 		}
-		a.args = []string{"chat", "--yolo", "-q"}
+		// --provider moa enables Mixture of Agents (multi-model ensemble, all free)
+		a.args = []string{"chat", "--yolo", "-q", "--provider", "moa"}
 	case "pi":
 		a.args = []string{"--approve", "--print"}
 	case "kimi", "kimocode":
