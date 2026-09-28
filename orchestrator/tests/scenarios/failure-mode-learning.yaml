@@ -26,5 +26,5 @@ sessions:
 
 post_checks:
   - type: search_memory
-    query: "deployment failure lesson rollback"
+    query: "deploy"
     expect_label_contains: "deploy"

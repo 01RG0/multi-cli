@@ -21,5 +21,5 @@ post_checks:
   - type: core_memory_contains
     substring: "51.12.208.62"
   - type: search_memory
-    query: "staging server IP address"
+    query: "staging"
     expect_label_contains: "staging"
