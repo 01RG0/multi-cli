@@ -54,6 +54,8 @@ type Provider interface {
 	Complete(ctx context.Context, req ChatRequest) (ChatResponse, error)
 	Stream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error)
 	Name() string
+	Model() string
+	SetModel(string)
 }
 
 // APIError carries HTTP status + message for circuit-breaker logic.

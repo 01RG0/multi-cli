@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"log"
 	"context"
 	"errors"
 	"fmt"
@@ -90,6 +91,10 @@ func (r *Router) Complete(ctx context.Context, req ChatRequest) (ChatResponse, e
 		if r.isCooling(p.Name()) {
 			continue
 		}
+		// Skip non-chat models for tool-use requests
+		if len(req.Tools) > 0 && !isChatCapable(p.Model()) {
+			continue
+		}
 		st := r.providerStats(p.Name())
 		var err error
 		for attempt := 0; attempt < r.maxRetries; attempt++ {
@@ -136,6 +141,9 @@ func (r *Router) Stream(ctx context.Context, req ChatRequest) (<-chan StreamChun
 		if r.isCooling(p.Name()) {
 			continue
 		}
+		if len(req.Tools) > 0 && !isChatCapable(p.Model()) {
+			continue
+		}
 		st := r.providerStats(p.Name())
 		ch, err := p.Stream(ctx, req)
 		if err == nil {
@@ -160,6 +168,60 @@ func (r *Router) setCooldown(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.cooldowns[name] = time.Now().Add(r.cooldownTTL)
+}
+
+// isChatCapable returns false for models that are clearly not chat/tool-capable
+// (speech, vision, image generation, etc.).
+func isChatCapable(model string) bool {
+	noChat := []string{"speech", "tts", "whisper", "audio", "vision", "image",
+		"orpheus", "arabic", "safeguard", "embedding", "embed", "rerank"}
+	lower := strings.ToLower(model)
+	for _, s := range noChat {
+		if strings.Contains(lower, s) {
+			return false
+		}
+	}
+	return true
+}
+
+// SortByTier reorders the fallback chain so higher-tier providers come first.
+// Call this after ProbeModels to ensure the best models are tried first.
+func (r *Router) SortByTier() {
+	type scored struct {
+		p    Provider
+		tier int
+	}
+	// Score primary + fallbacks together, then split back out
+	all := append([]Provider{r.primary}, r.fallbacks...)
+	scores := make([]scored, 0, len(all))
+	for _, p := range all {
+		if p == nil {
+			continue
+		}
+		tier := ModelTier[p.Model()]
+		scores = append(scores, scored{p, tier})
+	}
+	// Stable sort: higher tier first
+	for i := 1; i < len(scores); i++ {
+		for j := i; j > 0 && scores[j].tier > scores[j-1].tier; j-- {
+			scores[j], scores[j-1] = scores[j-1], scores[j]
+		}
+	}
+	if len(scores) > 0 {
+		r.primary = scores[0].p
+		r.fallbacks = make([]Provider, len(scores)-1)
+		for i, s := range scores[1:] {
+			r.fallbacks[i] = s.p
+		}
+	}
+	// Log new order
+	for i, s := range scores {
+		tierStr := ""
+		if s.tier > 0 {
+			tierStr = fmt.Sprintf(" tier=%d", s.tier)
+		}
+		log.Printf("router chain[%d]: %s (model=%s%s)", i, s.p.Name(), s.p.Model(), tierStr)
+	}
 }
 
 func isRateLimit(err error) bool {

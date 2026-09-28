@@ -89,6 +89,8 @@ func main() {
 		}
 	}
 	router := provider.NewRouter(primary, fallbacks, cfg.MaxRetries, cfg.CooldownSeconds)
+	// Re-sort chain by model tier so strongest providers are tried first
+	router.SortByTier()
 
 	if serve || cfg.ProxyPort > 0 {
 		srv := server.New(router, cfg, g)

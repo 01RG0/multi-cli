@@ -38,7 +38,9 @@ func NewAnthropic(name, baseURL, apiKey, model string) *AnthropicProvider {
 	}
 }
 
-func (p *AnthropicProvider) Name() string { return p.name }
+func (p *AnthropicProvider) Name() string   { return p.name }
+func (p *AnthropicProvider) Model() string  { return p.model }
+func (p *AnthropicProvider) SetModel(m string) { p.model = m }
 
 type anthropicRequest struct {
 	Model     string             `json:"model"`

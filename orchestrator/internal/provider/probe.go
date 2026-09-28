@@ -18,7 +18,11 @@ type ModelProber interface {
 // ProbeModels concurrently queries each provider for its available models,
 // selects the best one by tier, and updates the provider's default model.
 // Failures are silently skipped — not all providers expose /v1/models.
-func ProbeModels(ctx context.Context, providers map[string]Provider) {
+// ProbeModels probes each provider for available models and selects the best by tier.
+// Returns a map of provider name -> selected model tier (0 = unknown/unchanged).
+func ProbeModels(ctx context.Context, providers map[string]Provider) map[string]int {
+	results := make(map[string]int, len(providers))
+	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, p := range providers {
 		mp, ok := p.(ModelProber)
@@ -43,7 +47,11 @@ func ProbeModels(ctx context.Context, providers map[string]Provider) {
 			}
 			log.Printf("provider %s: selected model %s%s", mp.Name(), best, tierLabel)
 			mp.SetModel(best)
+			mu.Lock()
+			results[mp.Name()] = tier
+			mu.Unlock()
 		}(mp)
 	}
 	wg.Wait()
+	return results
 }

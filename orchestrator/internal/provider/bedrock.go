@@ -40,6 +40,8 @@ func NewBedrock(name, region, modelID, accessKey, secretKey string) *BedrockProv
 }
 
 func (p *BedrockProvider) Name() string { return p.name }
+func (p *BedrockProvider) Model() string   { return p.modelID }
+func (p *BedrockProvider) SetModel(m string) { p.modelID = m }
 
 func (p *BedrockProvider) endpoint() string {
 	return fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/model/%s/invoke", p.region, p.modelID)
