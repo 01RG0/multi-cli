@@ -69,6 +69,11 @@ func main() {
 
 	providerMap := buildProviders(cfg)
 
+	// Probe each provider for available models; auto-select best by capability tier.
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	provider.ProbeModels(probeCtx, providerMap)
+	probeCancel()
+
 	if len(cfg.FallbackChain) == 0 {
 		log.Fatal("fallback_chain is empty")
 	}

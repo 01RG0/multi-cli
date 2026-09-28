@@ -210,16 +210,21 @@ func (a *CLIAgent) Available() bool {
 	return false
 }
 
-// cleanEnv returns os.Environ() with ANTHROPIC_BASE_URL and OPENAI_BASE_URL stripped
-// so each CLI agent uses its own native auth/free-tier rather than our proxy.
+// cleanEnv returns os.Environ() with proxy-routing vars stripped so each CLI
+// agent uses its own native auth and free-tier models, not our proxy.
 func cleanEnv() []string {
+	blocked := map[string]bool{
+		"ANTHROPIC_BASE_URL": true,
+		"OPENAI_BASE_URL":    true,
+		"ANTHROPIC_API_KEY":  true, // CLI tools carry their own keys
+	}
 	env := os.Environ()
 	result := make([]string, 0, len(env))
 	for _, e := range env {
-		if strings.HasPrefix(e, "ANTHROPIC_BASE_URL=") || strings.HasPrefix(e, "OPENAI_BASE_URL=") {
-			continue
+		key := strings.SplitN(e, "=", 2)[0]
+		if !blocked[key] {
+			result = append(result, e)
 		}
-		result = append(result, e)
 	}
 	return result
 }

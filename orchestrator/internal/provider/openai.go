@@ -31,7 +31,45 @@ func NewOpenAI(name, baseURL, apiKey, model string) *OpenAIProvider {
 	}
 }
 
-func (p *OpenAIProvider) Name() string { return p.name }
+func (p *OpenAIProvider) Name() string  { return p.name }
+func (p *OpenAIProvider) Model() string { return p.model }
+
+// SetModel updates the default model used when ChatRequest.Model is empty.
+func (p *OpenAIProvider) SetModel(model string) { p.model = model }
+
+type modelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// ListModels fetches available model IDs from the provider's /v1/models endpoint.
+func (p *OpenAIProvider) ListModels(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if p.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("models: status %d", resp.StatusCode)
+	}
+	var mr modelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(mr.Data))
+	for _, d := range mr.Data {
+		ids = append(ids, d.ID)
+	}
+	return ids, nil
+}
 
 type openAIRequest struct {
 	Model       string          `json:"model"`
