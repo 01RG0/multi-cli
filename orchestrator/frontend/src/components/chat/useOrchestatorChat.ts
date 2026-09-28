@@ -466,6 +466,8 @@ const ULTRON_TOOLS = [
                 enum: ['opencode','codex','vibe','agy','grok','cline','kilo','cursor','hermes','deepseek','harness','kimocode','pi','researcher','debugger','jules'],
               },
               prompt: { type: 'string' },
+              timeout_minutes: { type: 'number', description: 'How long to wait for this step (default 120 min = 2h). Set higher for very long jobs.' },
+              max_retries: { type: 'number', description: 'Max retry attempts if this step fails (default 5). Set 0 for no retries.' },
             },
             required: ['description', 'agentId', 'prompt'],
           },

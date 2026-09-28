@@ -16,15 +16,17 @@ import (
 
 // Step represents one unit of work within an autonomous task.
 type Step struct {
-	Index       int    `json:"index"`
-	Description string `json:"description"`
-	AgentID     string `json:"agentId"`
-	Prompt      string `json:"prompt"`
-	Status      string `json:"status"` // pending|running|completed|failed|skipped
-	Result      string `json:"result"`
-	Retries     int    `json:"retries"`
-	StartedAt   int64  `json:"started_at"`
-	CompletedAt int64  `json:"completed_at"`
+	Index          int    `json:"index"`
+	Description    string `json:"description"`
+	AgentID        string `json:"agentId"`
+	Prompt         string `json:"prompt"`
+	Status         string `json:"status"` // pending|running|completed|failed|skipped
+	Result         string `json:"result"`
+	Retries        int    `json:"retries"`
+	MaxRetries     int    `json:"max_retries,omitempty"`     // 0 = use default (5)
+	TimeoutMinutes int    `json:"timeout_minutes,omitempty"` // 0 = use default (120)
+	StartedAt      int64  `json:"started_at"`
+	CompletedAt    int64  `json:"completed_at"`
 }
 
 // AutonomousTask is the DB record for a long-running multi-step task.
@@ -114,7 +116,11 @@ func (e *Executor) advanceTask(ctx context.Context, t *AutonomousTask) {
 		return
 	}
 
-	if step.Status == "failed" && step.Retries >= 3 {
+	maxRetries := step.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 5
+	}
+	if step.Status == "failed" && step.Retries >= maxRetries {
 		// Skip this step
 		step.Status = "skipped"
 		t.CurrentStep++
@@ -143,8 +149,12 @@ func (e *Executor) advanceTask(ctx context.Context, t *AutonomousTask) {
 		return
 	}
 
-	// Poll for task completion (up to 10 minutes)
-	result, runErr := e.pollTaskCompletion(ctx, taskID, 10*time.Minute)
+	// Poll for task completion — default 2h, overridable per step
+	stepTimeout := time.Duration(step.TimeoutMinutes) * time.Minute
+	if stepTimeout <= 0 {
+		stepTimeout = 2 * time.Hour
+	}
+	result, runErr := e.pollTaskCompletion(ctx, taskID, stepTimeout)
 	step.CompletedAt = time.Now().UnixMilli()
 	if runErr != nil {
 		step.Status = "failed"
