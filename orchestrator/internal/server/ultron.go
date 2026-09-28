@@ -1210,3 +1210,4 @@ func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "latency_ms": elapsed})
 	}
 }
+

@@ -1,0 +1,429 @@
+# CLI Agent Capability Map — generated 2026-09-29
+# Status: confirmed via live testing on rootuser@51.12.208.62
+version: "2"
+generated: "2026-09-29"
+
+clis:
+  # ─── TIER 1: FULLY WORKING ────────────────────────────────────────────────
+
+  agy:
+    version: "1.2.12"
+    binary: "/usr/local/bin/agy"
+    status: working
+    headless_cmd: "agy --model 'Gemini 3.8 Flash (Low)' --print '{prompt}'"
+    default_model: "Gemini 3.8 Flash (Low)"
+    available_models:
+      - "Gemini 3.8 Flash (High)"
+      - "Gemini 3.8 Flash (Medium)"
+      - "Gemini 3.8 Flash (Low)"
+      - "Gemini 3.7 Flash (High/Medium/Low)"
+      - "Gemini 3.1 Pro (High/Low)"
+      - "Claude Sonnet 4.6 (Thinking)"
+      - "Claude Opus 4.6 (Thinking)"
+      - "GPT-OSS 120B (Medium)"
+    auth:
+      type: env_or_config
+      keys: [GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY]
+    capabilities:
+      web_search: true
+      file_edit: true
+      code_execute: true
+      image_vision: true
+      multi_turn: true
+      stream_output: true
+      tool_calling: true
+      long_context: true
+      reasoning: true
+    tags: [fast, cheap, web_search, reasoning, multi_provider, working_now]
+    invocation_patterns:
+      quick_query: "agy --model 'Gemini 3.8 Flash (Low)' --print '{prompt}'"
+      heavy_reasoning: "agy --model 'Claude Sonnet 4.6 (Thinking)' --print '{prompt}'"
+      web_search: "agy --model 'Gemini 3.8 Flash (High)' --print '{prompt}'"
+
+  kilo:
+    version: "7.5.15"
+    binary: "/usr/local/bin/kilo"
+    status: working
+    headless_cmd: "kilo run '{prompt}'"
+    default_model: "kilo-auto/free"
+    auth:
+      type: stored_credentials
+      config_dir: "~/.local/share/kilo/"
+    capabilities:
+      file_edit: true
+      code_execute: true
+      repo_context: true
+      multi_turn: true
+      mcp_support: true
+      acp_server: true
+      stream_output: true
+    tags: [coding, file_edit, repo_context, mcp, working_now]
+    invocation_patterns:
+      headless: "kilo run '{prompt}'"
+      with_model: "kilo run --model '{model}' '{prompt}'"
+
+  kilocode:
+    version: "7.5.15"
+    binary: "/usr/local/bin/kilocode"
+    status: working
+    note: "Same binary as kilo"
+    headless_cmd: "kilocode run '{prompt}'"
+    default_model: "kilo-auto/free"
+    tags: [coding, file_edit, repo_context, working_now]
+
+  pi:
+    version: "0.87.1"
+    binary: "/usr/local/bin/pi"
+    status: working
+    headless_cmd: "pi --provider google --api-key '${GEMINI_API_KEY}' --model gemini-3.8-flash '{prompt}'"
+    default_model: "gemini-3.8-flash"
+    auth:
+      type: env_var
+      keys: [GEMINI_API_KEY, DEEPSEEK_API_KEY, OPENAI_API_KEY]
+    capabilities:
+      file_edit: true
+      code_execute: true
+      bash_tool: true
+      stream_output: true
+      multi_provider: true
+    tags: [coding, multi_provider, working_now]
+    invocation_patterns:
+      google: "pi --provider google --api-key '${GEMINI_API_KEY}' --model gemini-3.8-flash '{prompt}'"
+      deepseek: "pi --provider deepseek --api-key '${DEEPSEEK_API_KEY}' --model deepseek-chat '{prompt}'"
+
+  hermes:
+    version: "0.21.1"
+    binary: "/usr/local/bin/hermes"
+    status: working
+    headless_cmd: "hermes -z '{prompt}'"
+    default_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+    model_config: "~/.hermes/config.yaml"
+    auth:
+      type: openrouter
+      keys: [OPENROUTER_API_KEY]
+    capabilities:
+      web_search: true
+      web_browser: true
+      file_edit: true
+      code_execute: true
+      multi_turn: true
+      memory_graph: true
+      cron_scheduling: true
+      delegate_tasks: true
+      mcp_support: true
+      skills_system: true
+      tts: true
+      stream_output: true
+      tool_calling: true
+      long_context: true
+    tags: [autonomous, browser, memory, cron, delegate, richest, working_now]
+    invocation_patterns:
+      quick: "hermes -z '{prompt}'"
+      with_model: "hermes -z '{prompt}' -m '{model}'"
+      browser: "hermes -z 'Use browser to: {task}'"
+    known_free_models:
+      - "nvidia/nemotron-3-ultra-550b-a55b:free"
+      - "qwen/qwen3.8-27b:free"
+      - "google/gemma-4-31b-it:free"
+      - "poolside/laguna-s-2.1:free"
+
+  # ─── TIER 2: PARTIAL / FIXABLE ───────────────────────────────────────────
+
+  codex:
+    version: "0.156.1"
+    binary: "/usr/local/bin/codex"
+    status: partial
+    notes: "ChatGPT auth works. bwrap sandbox fails on Azure VM (loopback: Operation not permitted)."
+    headless_cmd: "codex exec --skip-git-repo-check '{prompt}'"
+    auth:
+      type: chatgpt_tokens
+      config: "~/.codex/auth.json"
+    capabilities:
+      file_edit: true
+      code_execute: false
+      code_review: true
+      repo_context: true
+      memories: true
+      mcp_support: true
+    tags: [code_review, partial]
+    known_limitation: "bwrap sandbox fails on Azure VM"
+
+  opencode:
+    version: "1.18.32"
+    binary: "/home/rootuser/.nvm/versions/node/v24.20.0/bin/opencode"
+    status: partial
+    notes: "Not in PATH. run fails with server error. Needs auth stored."
+    headless_cmd: "opencode run '{prompt}'"
+    auth:
+      type: stored_file
+      config: "~/.local/share/opencode/auth.json"
+      env: OPENROUTER_API_KEY
+    capabilities:
+      file_edit: true
+      code_execute: true
+      repo_context: true
+      mcp_support: true
+    tags: [coding, partial]
+    fix_needed: "ln -s nvm-bin/opencode /usr/local/bin/opencode; store OPENROUTER_API_KEY in auth.json"
+
+  cline:
+    version: "3.0.65"
+    binary: "/usr/local/bin/cline"
+    status: partial
+    notes: "Requires cline account re-authentication."
+    headless_cmd: "cline '{prompt}'"
+    default_model: "openrouter/free"
+    auth:
+      type: cline_account
+      config: "~/.cline/data/settings/providers.json"
+    capabilities:
+      file_edit: true
+      code_execute: true
+      repo_context: true
+      agent_teams: true
+      spawn_agents: true
+      mcp_support: true
+      plan_mode: true
+    tags: [coding, agent_teams, partial]
+    fix_needed: "Interactive re-auth required"
+
+  gemini:
+    version: "0.58.0"
+    binary: "/home/rootuser/.nvm/versions/node/v24.20.0/bin/gemini"
+    status: partial
+    notes: "503 errors. Needs GEMINI_CLI_TRUST_WORKSPACE=true for headless."
+    headless_cmd: "GEMINI_CLI_TRUST_WORKSPACE=true gemini -p '{prompt}'"
+    default_model: "gemini-3.8-flash"
+    auth:
+      type: env_var
+      keys: [GEMINI_API_KEY]
+    capabilities:
+      file_edit: true
+      code_execute: true
+      web_search: true
+      image_vision: true
+      mcp_support: true
+    tags: [coding, web_search, partial]
+    fix_needed: "Add to PATH; set GEMINI_CLI_TRUST_WORKSPACE=true"
+
+  vibe:
+    version: "2.25.0"
+    binary: "/usr/local/bin/vibe"
+    status: partial
+    notes: "MISTRAL_API_KEY set but hangs in headless mode (connector bootstrap loop)."
+    headless_cmd: "vibe -p '{prompt}' --auto-approve"
+    auth:
+      type: env_or_config
+      keys: [MISTRAL_API_KEY]
+      config: "~/.config/mistral/config.toml"
+    capabilities:
+      file_edit: true
+      code_execute: true
+      repo_context: true
+      worktree: true
+      mcp_support: true
+      max_price_limit: true
+    tags: [coding, mistral, partial]
+    fix_needed: "Investigate connector bootstrap timeout in headless mode"
+
+  kimi:
+    version: "2.1.1"
+    binary: "/home/rootuser/.nvm/versions/node/v24.20.0/bin/kimi"
+    status: partial
+    notes: "MOONSHOT_API_KEY not set. No providers configured."
+    headless_cmd: "kimi -p '{prompt}'"
+    default_model: "kimi-k3"
+    auth:
+      type: env_var
+      keys: [MOONSHOT_API_KEY]
+    capabilities:
+      file_edit: true
+      code_execute: true
+      repo_context: true
+      skills: true
+      plan_mode: true
+      acp_server: true
+    tags: [coding, kimi, partial]
+    fix_needed: "Set MOONSHOT_API_KEY; add to PATH"
+
+  dsh:
+    version: "0.1.5-rc.3"
+    binary: "/usr/local/bin/dsh"
+    status: partial
+    notes: "DeepSeek Harness. Needs profile and DEEPSEEK_API_KEY."
+    headless_cmd: "dsh --profile deepseek --prompt '{prompt}'"
+    auth:
+      type: profile_config
+      keys: [DEEPSEEK_API_KEY]
+    capabilities:
+      file_edit: true
+      code_execute: true
+      web_search: true
+      subagent: true
+    tags: [deepseek, coding, partial]
+    fix_needed: "Set DEEPSEEK_API_KEY; create deepseek profile"
+
+  # ─── TIER 3: BROKEN / NEEDS MAJOR FIX ───────────────────────────────────
+
+  grok:
+    version: "1.0.41"
+    binary: "/usr/local/bin/grok"
+    status: broken
+    notes: "keytar ERR_DLOPEN_FAILED. XAI_API_KEY not set."
+    auth:
+      type: keytar_keychain
+      keys: [XAI_API_KEY]
+    capabilities:
+      file_edit: true
+      code_execute: true
+      worktree: true
+    tags: [coding, broken]
+    fix_needed: "Set XAI_API_KEY; fix keytar native module for headless Linux"
+
+  jules:
+    version: "latest"
+    binary: "/usr/local/bin/jules"
+    status: broken
+    notes: "Google Jules async agent. Needs jules login. No JULES_API_KEY."
+    auth:
+      type: oauth_device_flow
+      keys: [JULES_API_KEY]
+    capabilities:
+      file_edit: true
+      async_execution: true
+      parallel_sessions: true
+      github_integration: true
+    tags: [async, github, broken]
+    fix_needed: "jules login (interactive device flow)"
+
+  cursor_agent:
+    version: "2026.09.23"
+    binary: "/usr/local/bin/agent"
+    status: broken
+    notes: "Cursor Agent CLI. CURSOR_API_KEY not set."
+    headless_cmd: "agent --api-key '${CURSOR_API_KEY}' -p '{prompt}'"
+    auth:
+      type: env_var
+      keys: [CURSOR_API_KEY]
+    capabilities:
+      file_edit: true
+      code_execute: true
+      repo_context: true
+    tags: [coding, broken]
+    fix_needed: "Set CURSOR_API_KEY in .env"
+
+  freebuff:
+    version: "0.0.180"
+    binary: "/home/rootuser/.nvm/versions/node/v24.20.0/bin/freebuff"
+    status: broken
+    notes: "Free AI coding assistant. Needs account login."
+    tags: [coding, broken]
+    fix_needed: "freebuff login (interactive)"
+
+  # ─── MONITORING (not an LLM agent) ───────────────────────────────────────
+
+  harness:
+    version: "0.2.1"
+    binary: "/home/rootuser/.nvm/versions/node/v24.20.0/bin/harness"
+    status: working
+    type: monitoring_dashboard
+    notes: "NOT an LLM agent — monitors and tracks other CLI coding sessions."
+    capabilities:
+      session_tracking: true
+      search_history: true
+      export_sessions: true
+      stats: true
+    tags: [monitoring, non_agent]
+    invocation_patterns:
+      stats: "harness stats"
+      sessions: "harness sessions"
+      search: "harness search '{query}'"
+
+# ─── ROUTING MATRIX ─────────────────────────────────────────────────────────
+routing:
+  general_chat:
+    primary: agy
+    fallback: [hermes, pi, kilo]
+    model_hint: "Gemini 3.8 Flash (Low)"
+    reason: "agy fastest for Q&A; hermes for complex queries"
+
+  web_research:
+    primary: hermes
+    fallback: [agy, gemini]
+    reason: "hermes has browser-use; agy has Gemini web grounding; gemini native search"
+
+  code_generation:
+    primary: kilo
+    fallback: [hermes, pi, agy]
+    reason: "kilo purpose-built coding agent with repo context"
+
+  code_review:
+    primary: codex
+    fallback: [hermes, kilo, pi]
+    reason: "codex has dedicated code review mode"
+
+  file_editing:
+    primary: kilo
+    fallback: [hermes, pi, cline]
+
+  complex_autonomous:
+    primary: hermes
+    fallback: [kilo, cline]
+    reason: "hermes richest toolset — delegation, memory, cron"
+
+  browser_automation:
+    primary: hermes
+    fallback: [gemini]
+
+  fast_cheap:
+    primary: agy
+    fallback: [pi, hermes]
+    model_hint: "Gemini 3.8 Flash (Low)"
+
+  reasoning_heavy:
+    primary: agy
+    fallback: [hermes, kilo]
+    model_hint: "Claude Sonnet 4.6 (Thinking)"
+
+  deepseek_code:
+    primary: pi
+    fallback: [hermes]
+    model_hint: "deepseek-v3 via --provider deepseek"
+
+  scheduling_cron:
+    primary: hermes
+    fallback: [agy]
+
+# ─── CAPABILITY INDEX ────────────────────────────────────────────────────────
+capability_index:
+  working_now:     [agy, kilo, kilocode, pi, hermes]
+  web_search:      [agy, hermes, gemini, dsh]
+  browser_use:     [hermes]
+  file_edit:       [kilo, kilocode, pi, hermes, cline, vibe, codex, dsh, grok, kimi, cursor_agent]
+  code_execute:    [kilo, kilocode, pi, hermes, cline, vibe, dsh, kimi, cursor_agent]
+  repo_context:    [kilo, kilocode, codex, cline, opencode, vibe, kimi, dsh]
+  mcp_support:     [kilo, kilocode, hermes, codex, cline, opencode, gemini, vibe, kimi]
+  memory:          [hermes, codex]
+  cron_scheduling: [hermes]
+  delegate_tasks:  [hermes]
+  async_exec:      [jules]
+  reasoning:       [agy, hermes]
+  free_tier:       [agy, kilo, pi, hermes]
+
+# Priority order for dispatch (higher = tried first)
+dispatch_priority:
+  - agy         # fast, versatile, confirmed working
+  - hermes      # richest features, confirmed working
+  - kilo        # best for code tasks
+  - pi          # good fallback with multi-provider
+  - kilocode    # same as kilo
+  - codex       # review only (bwrap broken)
+  - cline       # needs re-auth
+  - gemini      # 503 issues
+  - vibe        # headless issues
+  - opencode    # not in PATH
+  - kimi        # no API key
+  - dsh         # no profile
+  - cursor_agent  # no key
+  - grok        # broken (keytar)
+  - jules       # needs login (async)
