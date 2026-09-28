@@ -11,12 +11,6 @@ providers:
     api_key: ${TOKEN_HARBOR_API_KEY}
     model: deepseek-v4.1-flash:free
 
-  - name: codecraft
-    type: openai_compat
-    base_url: ${CODECRAFT_BASE_URL}
-    api_key: ${CODECRAFT_API_KEY}
-    model: gpt-4o-mini
-
   - name: aihubmix
     type: openai_compat
     base_url: ${AIHUBMIX_BASE_URL}
@@ -116,7 +110,7 @@ providers:
     model: us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Primary provider + fallback order — free/cheap providers first; bedrock last (AWS-hosted Anthropic)
-fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, pooled, anyapi, apertis, dahl, groq, cerebras, openrouter, mistral, cohere, gemini, codecraft, bedrock-haiku, bedrock]
+fallback_chain: [tokenharbor, aihubmix, apmix, dashscope, atessa, pooled, anyapi, apertis, dahl, groq, cerebras, openrouter, mistral, cohere, gemini, bedrock-haiku, bedrock]
 
 max_retries: 3
 cooldown_seconds: 60
