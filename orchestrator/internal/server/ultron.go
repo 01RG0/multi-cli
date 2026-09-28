@@ -989,6 +989,17 @@ func (s *Server) handleProviderHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"providers": providers})
 }
 
+// handleProviderStats returns per-provider request/token/error counters.
+// GET /api/providers/stats → {"groq":{"requests":12,"input_tokens":4200,...},...}
+func (s *Server) handleProviderStats(w http.ResponseWriter, r *http.Request) {
+	corsJSON(w)
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	json.NewEncoder(w).Encode(s.router.AllStats())
+}
+
 // handleTableStats returns row counts for real SQLite tables used in the
 // mini memory graph visualization in the dashboard.
 // GET /api/stats/tables → {"tasks":N,"memory_nodes":N,"skills":N}

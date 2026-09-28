@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSwarmStore } from '../store/useSwarmStore';
 import {
   DndContext,
@@ -17,16 +17,31 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Eye, EyeOff, Plus, X, Zap, CheckCircle, XCircle, Loader, Copy, Trash2 } from 'lucide-react';
+import { GripVertical, Eye, EyeOff, Plus, X, Zap, CheckCircle, XCircle, Loader, Copy, Trash2, BarChart2 } from 'lucide-react';
 
 type TestState = 'idle' | 'testing' | 'ok' | 'fail';
+
+interface ProviderStat {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  errors: number;
+  last_used_ms: number;
+}
 
 interface SortableProviderItemProps {
   id: string;
   onClone: (id: string) => void;
+  stats: Record<string, ProviderStat>;
 }
 
-function SortableProviderItem({ id, onClone }: SortableProviderItemProps) {
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function SortableProviderItem({ id, onClone, stats }: SortableProviderItemProps) {
   const { providers, updateProvider, setProviders } = useSwarmStore();
   const provider = providers.find(p => p.id === id);
   const [showKey, setShowKey] = useState(false);
@@ -45,6 +60,13 @@ function SortableProviderItem({ id, onClone }: SortableProviderItemProps) {
   const style = { transform: CSS.Transform.toString(transform), transition };
 
   if (!provider) return null;
+
+  // Match backend stat by provider name (case-insensitive)
+  const stat = Object.entries(stats).find(
+    ([k]) => k.toLowerCase() === provider.name.toLowerCase()
+  )?.[1];
+
+  const totalTokens = stat ? stat.input_tokens + stat.output_tokens : 0;
 
   const handleTest = async () => {
     if (testState === 'testing') return;
@@ -77,6 +99,8 @@ function SortableProviderItem({ id, onClone }: SortableProviderItemProps) {
     provider.health === 'green' ? 'bg-green-500' :
     provider.health === 'red'   ? 'bg-red-500' : 'bg-amber-500';
 
+  const hasErrors = stat && stat.errors > 0;
+
   return (
     <div
       ref={setNodeRef}
@@ -92,9 +116,9 @@ function SortableProviderItem({ id, onClone }: SortableProviderItemProps) {
         <GripVertical size={16} />
       </div>
 
-      <div className="flex-1 grid grid-cols-12 gap-3 items-center min-w-0">
+      <div className="flex-1 grid grid-cols-12 gap-2 items-center min-w-0">
         {/* Name + model tag */}
-        <div className="col-span-3 min-w-0">
+        <div className="col-span-2 min-w-0">
           <div className="font-medium text-white text-sm truncate">{provider.name}</div>
           {provider.model && (
             <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">{provider.model}</div>
@@ -102,74 +126,81 @@ function SortableProviderItem({ id, onClone }: SortableProviderItemProps) {
         </div>
 
         {/* API key */}
-        <div className="col-span-4 flex items-center gap-2 min-w-0">
-          <div className="bg-black border border-zinc-800 text-zinc-300 font-mono text-xs px-2.5 py-1.5 rounded flex-1 min-w-0 flex items-center justify-between gap-1">
-            <span className="truncate">{showKey ? (provider.apiKey || 'Stored in .env') : provider.apiKeyMasked}</span>
+        <div className="col-span-3 flex items-center gap-1 min-w-0">
+          <div className="bg-black border border-zinc-800 text-zinc-300 font-mono text-xs px-2 py-1 rounded flex-1 min-w-0 flex items-center justify-between gap-1">
+            <span className="truncate text-[10px]">{showKey ? (provider.apiKey || 'Stored in .env') : provider.apiKeyMasked}</span>
             <button onClick={() => setShowKey(!showKey)} className="text-zinc-500 hover:text-white shrink-0">
-              {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+              {showKey ? <EyeOff size={11} /> : <Eye size={11} />}
             </button>
           </div>
         </div>
 
-        {/* Latency */}
-        <div className="col-span-2 flex items-center gap-1.5 text-xs text-zinc-400">
-          <div className={`w-2 h-2 rounded-full shrink-0 ${healthColor}`} />
-          <span className="tabular-nums">{testedLatency ?? provider.latency}ms</span>
+        {/* Requests */}
+        <div className="col-span-2 text-center">
+          {stat ? (
+            <div className="flex flex-col items-center">
+              <span className="text-white text-xs font-mono tabular-nums">{fmt(stat.requests)}</span>
+              {hasErrors && (
+                <span className="text-red-500 text-[9px]">{stat.errors} err</span>
+              )}
+            </div>
+          ) : (
+            <span className="text-zinc-700 text-xs">—</span>
+          )}
         </div>
 
-        {/* TEST button */}
-        <div className="col-span-1 flex justify-center">
+        {/* Tokens */}
+        <div className="col-span-2 text-center">
+          {totalTokens > 0 ? (
+            <div className="flex flex-col items-center">
+              <span className="text-amber-400 text-xs font-mono tabular-nums">{fmt(totalTokens)}</span>
+              <span className="text-zinc-600 text-[9px]">{fmt(stat!.input_tokens)}in · {fmt(stat!.output_tokens)}out</span>
+            </div>
+          ) : (
+            <span className="text-zinc-700 text-xs">—</span>
+          )}
+        </div>
+
+        {/* Latency */}
+        <div className="col-span-1 flex items-center gap-1 text-xs text-zinc-400 justify-center">
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${healthColor}`} />
+          <span className="tabular-nums text-[10px]">{testedLatency ?? provider.latency}ms</span>
+        </div>
+
+        {/* TEST + actions */}
+        <div className="col-span-2 flex justify-end items-center gap-1.5">
           <button
             onClick={handleTest}
             disabled={testState === 'testing'}
             title="Ping provider"
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border transition-all ${
+            className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-all ${
               testState === 'testing' ? 'border-zinc-700 text-zinc-600 cursor-not-allowed' :
               testState === 'ok'      ? 'border-green-800 text-green-400 bg-green-950/30' :
               testState === 'fail'    ? 'border-red-800 text-red-400 bg-red-950/30' :
               'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white'
             }`}
           >
-            {testState === 'testing' && <Loader size={10} className="animate-spin" />}
-            {testState === 'ok'      && <CheckCircle size={10} />}
-            {testState === 'fail'    && <XCircle size={10} />}
-            {testState === 'idle'    && <Zap size={10} />}
-            <span>
-              {testState === 'testing' ? '…' :
-               testState === 'ok'      ? 'OK' :
-               testState === 'fail'    ? 'FAIL' : 'TEST'}
-            </span>
-          </button>
-        </div>
-
-        {/* Enabled toggle */}
-        <div className="col-span-2 flex justify-end items-center gap-2">
-          {/* Clone button — always visible on hover */}
-          <button
-            onClick={() => onClone(provider.id)}
-            title="Clone provider (same key, new model)"
-            className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-blue-400 transition-all p-1 rounded"
-          >
-            <Copy size={13} />
+            {testState === 'testing' && <Loader size={9} className="animate-spin" />}
+            {testState === 'ok'      && <CheckCircle size={9} />}
+            {testState === 'fail'    && <XCircle size={9} />}
+            {testState === 'idle'    && <Zap size={9} />}
+            <span>{testState === 'testing' ? '…' : testState === 'ok' ? 'OK' : testState === 'fail' ? 'FAIL' : 'TEST'}</span>
           </button>
 
-          {/* Delete button */}
-          <button
-            onClick={handleDelete}
-            title="Remove provider"
-            className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all p-1 rounded"
-          >
-            <Trash2 size={13} />
+          <button onClick={() => onClone(provider.id)} title="Clone (same key, new model)"
+            className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-blue-400 transition-all p-0.5 rounded">
+            <Copy size={12} />
+          </button>
+
+          <button onClick={handleDelete} title="Remove"
+            className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all p-0.5 rounded">
+            <Trash2 size={12} />
           </button>
 
           <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={provider.enabled}
-              onChange={(e) => updateProvider(provider.id, { enabled: e.target.checked })}
-            />
-            <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
+            <input type="checkbox" className="sr-only peer" checked={provider.enabled}
+              onChange={(e) => updateProvider(provider.id, { enabled: e.target.checked })} />
+            <div className="w-8 h-4 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
           </label>
         </div>
       </div>
@@ -184,27 +215,38 @@ export default function ProviderChain() {
   const [newKey, setNewKey] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newModel, setNewModel] = useState('');
+  const [providerStats, setProviderStats] = useState<Record<string, ProviderStat>>({});
 
-  React.useEffect(() => {
-    fetch('/health')
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (!data || !Array.isArray(data.chain)) return;
-        const chain: string[] = data.chain;
-        setProviders(providers.map(p => ({
-          ...p,
-          health: chain.some(name => name.toLowerCase() === p.name.toLowerCase()) ? 'green' : p.health,
-        })));
-      })
-      .catch(() => {});
+  // Load real provider health + stats from backend
+  useEffect(() => {
+    const load = () => {
+      fetch('/health')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data || !Array.isArray(data.chain)) return;
+          const chain: string[] = data.chain;
+          setProviders(providers.map(p => ({
+            ...p,
+            health: chain.some(name => name.toLowerCase() === p.name.toLowerCase()) ? 'green' : p.health,
+          })));
+        })
+        .catch(() => {});
+
+      fetch('/api/providers/stats')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setProviderStats(data); })
+        .catch(() => {});
+    };
+
+    load();
+    const interval = setInterval(load, 10000); // refresh every 10s
+    return () => clearInterval(interval);
   }, []);
 
   const openAddForm = (prefill?: { name: string; key: string; url: string; model: string }) => {
     if (prefill) {
-      setNewName(prefill.name);
-      setNewKey(prefill.key);
-      setNewUrl(prefill.url);
-      setNewModel(prefill.model);
+      setNewName(prefill.name); setNewKey(prefill.key);
+      setNewUrl(prefill.url); setNewModel(prefill.model);
     } else {
       setNewName(''); setNewKey(''); setNewUrl(''); setNewModel('');
     }
@@ -214,24 +256,16 @@ export default function ProviderChain() {
   const handleClone = (id: string) => {
     const src = providers.find(p => p.id === id);
     if (!src) return;
-    // Suggest a clone name like "openrouter-2"
     const base = src.name.replace(/-\d+$/, '');
     const idx = providers.filter(p => p.name.startsWith(base)).length + 1;
-    openAddForm({
-      name: `${base}-${idx}`,
-      key: src.apiKey || '',
-      url: src.baseUrl || '',
-      model: src.model || '',
-    });
+    openAddForm({ name: `${base}-${idx}`, key: src.apiKey || '', url: src.baseUrl || '', model: src.model || '' });
   };
 
   const handleAddProvider = () => {
     if (!newName.trim()) return;
     const key = newKey.trim();
-    const masked = key.length > 8
-      ? `${key.slice(0, 4)}••••••${key.slice(-3)}`
-      : key ? '••••••••' : '(not configured)';
-    const newProvider = {
+    const masked = key.length > 8 ? `${key.slice(0, 4)}••••••${key.slice(-3)}` : key ? '••••••••' : '(not configured)';
+    setProviders([...providers, {
       id: `p-${Date.now()}`,
       name: newName.trim(),
       apiKeyMasked: masked,
@@ -243,16 +277,16 @@ export default function ProviderChain() {
       health: (key ? 'green' : 'amber') as 'green' | 'amber' | 'red',
       enabled: !!key,
       cooldownUntil: null,
-    };
-    setProviders([...providers, newProvider]);
+    }]);
     setNewName(''); setNewKey(''); setNewUrl(''); setNewModel(''); setShowAddForm(false);
   };
 
+  const totalRequests = Object.values(providerStats).reduce((s, p) => s + p.requests, 0);
+  const totalTokens   = Object.values(providerStats).reduce((s, p) => s + p.input_tokens + p.output_tokens, 0);
+
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -266,144 +300,135 @@ export default function ProviderChain() {
 
   return (
     <div className="w-full p-5 bg-[#121215] border border-[#27272a] rounded-lg text-white">
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-xl font-bold text-white">PROVIDER CHAIN</h2>
+
+      {/* Header with stats summary + Add button */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-xl font-bold text-white">PROVIDER CHAIN</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {providers.length} providers · drag to reorder · hover to clone or remove
+            </p>
+          </div>
+
+          {/* Add Provider — always-visible prominent button */}
           <button
             onClick={() => showAddForm ? setShowAddForm(false) : openAddForm()}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white text-xs font-mono rounded transition"
+            className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-mono font-bold transition-all ${
+              showAddForm
+                ? 'bg-zinc-900 border-zinc-600 text-zinc-400'
+                : 'bg-white hover:bg-zinc-100 border-white text-black'
+            }`}
           >
-            {showAddForm ? <X size={13} /> : <Plus size={13} />}
-            {showAddForm ? 'Cancel' : 'Add Provider'}
+            {showAddForm ? <X size={14} /> : <Plus size={14} />}
+            {showAddForm ? 'Cancel' : '+ Add Provider'}
           </button>
         </div>
-        <p className="text-sm text-zinc-400 mb-4">
-          Fallback Hierarchy · {providers.length} configured
-          <span className="ml-2 text-zinc-600 text-xs">Hover a row → Clone to add another model on the same key</span>
-        </p>
 
+        {/* Stats summary bar */}
+        {(totalRequests > 0 || totalTokens > 0) && (
+          <div className="flex items-center gap-4 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg mb-4 text-xs">
+            <BarChart2 size={12} className="text-zinc-500 shrink-0" />
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-500">Requests</span>
+              <span className="text-white font-mono font-bold">{fmt(totalRequests)}</span>
+            </div>
+            <div className="w-px h-3 bg-zinc-800" />
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-500">Tokens</span>
+              <span className="text-amber-400 font-mono font-bold">{fmt(totalTokens)}</span>
+            </div>
+            <div className="w-px h-3 bg-zinc-800" />
+            <span className="text-zinc-600">live · resets on restart</span>
+          </div>
+        )}
+
+        {/* Add form */}
         {showAddForm && (
           <div className="mb-4 p-4 bg-zinc-950 border border-zinc-700 rounded-lg space-y-3">
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex flex-col gap-1 flex-1 min-w-32">
                 <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Name *</label>
-                <input
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
+                <input value={newName} onChange={e => setNewName(e.target.value)}
                   placeholder="e.g. openrouter-strong"
-                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-                />
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500" />
               </div>
               <div className="flex flex-col gap-1 flex-1 min-w-40">
                 <label className="text-[10px] text-zinc-500 uppercase tracking-wider">API Key</label>
-                <input
-                  value={newKey}
-                  onChange={e => setNewKey(e.target.value)}
-                  placeholder="sk-..."
-                  type="password"
-                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-                />
+                <input value={newKey} onChange={e => setNewKey(e.target.value)}
+                  placeholder="sk-..." type="password"
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500" />
               </div>
             </div>
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex flex-col gap-1 flex-1 min-w-40">
                 <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Base URL (optional)</label>
-                <input
-                  value={newUrl}
-                  onChange={e => setNewUrl(e.target.value)}
+                <input value={newUrl} onChange={e => setNewUrl(e.target.value)}
                   placeholder="https://openrouter.ai/api/v1"
-                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-                />
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500" />
               </div>
               <div className="flex flex-col gap-1 flex-1 min-w-40">
                 <label className="text-[10px] text-zinc-500 uppercase tracking-wider">Model (optional)</label>
-                <input
-                  value={newModel}
-                  onChange={e => setNewModel(e.target.value)}
+                <input value={newModel} onChange={e => setNewModel(e.target.value)}
                   placeholder="e.g. anthropic/claude-opus-4"
-                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500"
-                />
+                  className="bg-black border border-zinc-800 text-white text-xs rounded px-2.5 py-1.5 focus:outline-none focus:border-zinc-500" />
               </div>
-              <button
-                onClick={handleAddProvider}
-                disabled={!newName.trim()}
-                className="px-4 py-1.5 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-600 text-black text-xs font-bold rounded transition"
-              >
+              <button onClick={handleAddProvider} disabled={!newName.trim()}
+                className="px-4 py-1.5 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-600 text-black text-xs font-bold rounded transition">
                 Add
               </button>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-12 gap-3 px-10 pb-2 text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-          <div className="col-span-3">Provider / Model</div>
-          <div className="col-span-4">API Key</div>
-          <div className="col-span-2">Latency</div>
-          <div className="col-span-1 text-center">Test</div>
-          <div className="col-span-2 text-right">Enabled</div>
+        {/* Column headers */}
+        <div className="grid grid-cols-12 gap-2 px-10 pb-2 text-[9px] font-medium text-zinc-600 uppercase tracking-wider">
+          <div className="col-span-2">Provider</div>
+          <div className="col-span-3">API Key</div>
+          <div className="col-span-2 text-center">Requests</div>
+          <div className="col-span-2 text-center">Tokens</div>
+          <div className="col-span-1 text-center">Latency</div>
+          <div className="col-span-2 text-right">Test · Clone · Del · On</div>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={providers.map(p => p.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            {providers.map((provider) => (
-              <SortableProviderItem key={provider.id} id={provider.id} onClone={handleClone} />
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={providers.map(p => p.id)} strategy={verticalListSortingStrategy}>
+            {providers.map(provider => (
+              <SortableProviderItem key={provider.id} id={provider.id} onClone={handleClone} stats={providerStats} />
             ))}
           </SortableContext>
         </DndContext>
       </div>
 
-      <div className="bg-[#121215] border border-[#27272a] rounded-lg p-5 text-white mt-8">
+      {/* Agent Config */}
+      <div className="bg-[#121215] border border-[#27272a] rounded-lg p-5 text-white mt-4">
         <h3 className="text-lg font-semibold mb-4">Agent Config</h3>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium w-1/3">Name</label>
-            <input
-              type="text"
-              value={agentConfig.name}
-              onChange={(e) => setAgentConfig({ name: e.target.value })}
-              className="w-2/3 bg-black border border-zinc-800 text-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-white focus:ring-1 focus:ring-white"
-            />
+            <input type="text" value={agentConfig.name}
+              onChange={e => setAgentConfig({ name: e.target.value })}
+              className="w-2/3 bg-black border border-zinc-800 text-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-white focus:ring-1 focus:ring-white" />
           </div>
-
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium w-1/3">Max Concurrent Tasks</label>
-            <input
-              type="number"
-              value={agentConfig.maxConcurrentTasks}
-              onChange={(e) => setAgentConfig({ maxConcurrentTasks: parseInt(e.target.value) })}
-              className="w-2/3 bg-black border border-zinc-800 text-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-white focus:ring-1 focus:ring-white"
-            />
+            <input type="number" value={agentConfig.maxConcurrentTasks}
+              onChange={e => setAgentConfig({ maxConcurrentTasks: parseInt(e.target.value) })}
+              className="w-2/3 bg-black border border-zinc-800 text-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-white focus:ring-1 focus:ring-white" />
           </div>
-
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">Enabled</label>
             <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={agentConfig.enabled}
-                onChange={(e) => setAgentConfig({ enabled: e.target.checked })}
-              />
+              <input type="checkbox" className="sr-only peer" checked={agentConfig.enabled}
+                onChange={e => setAgentConfig({ enabled: e.target.checked })} />
               <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
             </label>
           </div>
-
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">Preferred Provider Override</label>
             <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={agentConfig.preferredProviderOverride}
-                onChange={(e) => setAgentConfig({ preferredProviderOverride: e.target.checked })}
-              />
+              <input type="checkbox" className="sr-only peer" checked={agentConfig.preferredProviderOverride}
+                onChange={e => setAgentConfig({ preferredProviderOverride: e.target.checked })} />
               <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white peer-checked:after:bg-black"></div>
             </label>
           </div>

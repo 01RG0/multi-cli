@@ -212,6 +212,7 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	mux.HandleFunc("/api/providers", s.handleProviderHealth)
+	mux.HandleFunc("/api/providers/stats", s.handleProviderStats)
 
 	// Serve React frontend — SPA fallback: unknown paths → index.html
 	distDir := "frontend/dist"
