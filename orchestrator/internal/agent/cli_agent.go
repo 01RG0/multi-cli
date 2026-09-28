@@ -50,7 +50,8 @@ func New(name, binary string, timeout time.Duration) *CLIAgent {
 	case "vibe":
 		a.args = []string{"--auto-approve", "-p"}
 	case "agy", "researcher", "debugger":
-		a.args = []string{"--dangerously-skip-permissions", "--print"}
+		// Google AI Pro account — use strongest available Gemini model
+		a.args = []string{"--dangerously-skip-permissions", "--print", "--model", "gemini-3.8-flash-high"}
 	case "hermes":
 		if a.binary == "" {
 			a.binary = "hermes"
