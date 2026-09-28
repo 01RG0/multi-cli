@@ -309,6 +309,9 @@ export default function MemoryNeuralGraph() {
     return m;
   }, [nodes, sel]);
 
+  // Bouton hover: stores screen-space position for tooltip
+  const [hovBouton, setHovBouton] = useState<{ nodeId: string; cx: number; cy: number } | null>(null);
+
   const selNode  = nodes.find(n => n.id === sel) ?? null;
   const selColor = selNode ? TYPE_META[selNode.type].color : '#fff';
 
@@ -421,7 +424,7 @@ export default function MemoryNeuralGraph() {
           style={{ background: 'radial-gradient(ellipse at 50% 45%, #0e0a05 0%, #020100 100%)' }}
           onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onWheel={onWheel}>
 
-          <svg width={dims.w} height={dims.h} className="absolute inset-0 select-none">
+          <svg width={dims.w} height={dims.h} className="absolute inset-0 select-none" style={{ overflow: 'visible' }}>
             <defs>
               <filter id="fng" x="-80%" y="-80%" width="260%" height="260%">
                 <feGaussianBlur stdDeviation="5" result="b1" />
@@ -458,8 +461,8 @@ export default function MemoryNeuralGraph() {
                 const isVis = filtered ? filtered.has(src.id) || filtered.has(dstId) : true;
                 const col   = TYPE_META[src.type].color;
                 const act   = (src.activation + dst.activation) / 2;
-                const edW   = isFoc ? 0.9 + act * 0.5 : 0.35 + act * 0.45;
-                const edOp  = isFoc ? 0.82 : 0.18 + act * 0.28;
+                const edW   = isFoc ? 2.2 + act * 0.8 : 1.0 + act * 0.6;
+                const edOp  = isFoc ? 0.92 : 0.45 + act * 0.35;
                 const d     = edgePath(src.x, src.y, dst.x, dst.y);
                 const sigDur = `${1.5 + ((src.id.length + dstId.length) % 8) * 0.2}s`;
                 const mx = (src.x + dst.x) / 2, my = (src.y + dst.y) / 2;
@@ -566,9 +569,26 @@ export default function MemoryNeuralGraph() {
 
                     {geom.boutons.map((b, bi) => {
                       const bOp = isSel ? 1.0 : isHov ? 0.85 : 0.38 + node.activation * 0.45;
+                      const hitR = Math.max(7, b.r * 4);
                       return (
-                        <g key={bi}>
+                        <g key={bi}
+                          style={{ cursor: 'pointer' }}
+                          onClick={(e) => { e.stopPropagation(); setSel(node.id); }}
+                          onMouseEnter={(e) => {
+                            e.stopPropagation();
+                            const svgEl = (e.currentTarget.ownerSVGElement as SVGSVGElement);
+                            const rect = svgEl.getBoundingClientRect();
+                            const sx = rect.left + (node.x + b.x) * zoom + pan.x;
+                            const sy = rect.top  + (node.y + b.y) * zoom + pan.y;
+                            setHovBouton({ nodeId: node.id, cx: sx, cy: sy });
+                          }}
+                          onMouseLeave={(e) => { e.stopPropagation(); setHovBouton(null); }}
+                        >
+                          {/* Enlarged invisible hit area */}
+                          <circle cx={b.x} cy={b.y} r={hitR} fill="transparent" />
+                          {/* Glow halo */}
                           <circle cx={b.x} cy={b.y} r={b.r * 2.5} fill={glow} opacity={bOp * 0.25} filter="url(#fnb)" />
+                          {/* Core dot */}
                           <circle cx={b.x} cy={b.y} r={b.r} fill={glow} opacity={bOp}>
                             <animate attributeName="r"
                               values={`${b.r};${b.r * 1.5};${b.r}`}
@@ -630,6 +650,38 @@ export default function MemoryNeuralGraph() {
               })}
             </g>
           </svg>
+
+          {/* Bouton tooltip — screen-space floating card */}
+          {hovBouton && (() => {
+            const n = nodes.find(nd => nd.id === hovBouton.nodeId);
+            if (!n) return null;
+            const meta = TYPE_META[n.type];
+            const wrapRect = wrapRef.current?.getBoundingClientRect();
+            const tx = hovBouton.cx - (wrapRect?.left ?? 0) + 10;
+            const ty = hovBouton.cy - (wrapRect?.top  ?? 0) - 12;
+            return (
+              <div
+                className="absolute z-50 pointer-events-none"
+                style={{ left: tx, top: ty, maxWidth: 220 }}
+              >
+                <div className="bg-[#0c0a06] border rounded-lg px-3 py-2 shadow-xl text-[10px] font-mono"
+                  style={{ borderColor: `${meta.color}55` }}>
+                  <div className="font-bold mb-0.5" style={{ color: meta.color }}>{n.label}</div>
+                  <div className="text-[9px] mb-1" style={{ color: `${meta.color}80` }}>
+                    {meta.label.toUpperCase()} · {Math.round(n.activation * 100)}% activation
+                  </div>
+                  <div className="text-zinc-400 leading-relaxed" style={{ fontSize: 9 }}>
+                    {n.content.length > 140 ? n.content.slice(0, 140) + '…' : n.content}
+                  </div>
+                  {n.connections.length > 0 && (
+                    <div className="mt-1.5 text-[8px]" style={{ color: `${meta.color}60` }}>
+                      {n.connections.length} synaptic link{n.connections.length !== 1 ? 's' : ''} · click to open
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="absolute bottom-2 left-3 text-[8px] text-zinc-800 font-mono pointer-events-none">
             {Math.round(zoom * 100)}% · drag · scroll to zoom
