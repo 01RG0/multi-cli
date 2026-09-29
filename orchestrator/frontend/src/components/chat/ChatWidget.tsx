@@ -32,6 +32,7 @@ import { ThoughtChainCard } from './ThoughtChainCard';
 import { TaskProgressCard } from './TaskProgressCard';
 import { ChatSender } from './ChatSender';
 import { UltronIcon } from './UltronIcon';
+import { TokenMeter } from './TokenMeter';
 
 // ─── WebSocket Status Indicator ────────────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export function ChatWidget() {
 
         {/* Right Status Indicators */}
         <div className="flex items-center gap-2.5">
+          <TokenMeter messages={messages} isLoading={isLoading} />
           <WsStatusPill />
           <button
             type="button"

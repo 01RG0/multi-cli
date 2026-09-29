@@ -1685,7 +1685,12 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
             const toolResultBlocks: ApiToolResult[] = [];
 
             // Bug 1 fix: add all placeholder cards at once to avoid React batching race
-            const toolCallMsgs: ChatMessage[] = toolUseBlocks.map((tb) => ({
+            // Usage is attached to the FIRST card only: every tool block in a
+            // turn comes from the same single model call, so tagging them all
+            // would multiply-count the same tokens. Most Ultron turns end in
+            // tool_use, and dropping their usage entirely made the session
+            // token counter read near-zero while the agent was working hard.
+            const toolCallMsgs: ChatMessage[] = toolUseBlocks.map((tb, tbIdx) => ({
               id:        uid(),
               key:       uid(),
               role:      'tool_call' as const,
@@ -1693,6 +1698,9 @@ export function useOrchestatorChat(): UseOrchestatorChatReturn {
               toolUse:   { id: tb.id, name: tb.name, input: tb.input },
               timestamp: Date.now(),
               status:    'streaming' as const,
+              usage:     tbIdx === 0 ? response.usage : undefined,
+              latencyMs: tbIdx === 0 ? latencyMs : undefined,
+              model:     tbIdx === 0 ? servingProvider || 'claude-sonnet-4-6' : undefined,
             }));
             setMessagesBySession((prev) => ({
               ...prev,
