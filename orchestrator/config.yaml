@@ -104,23 +104,38 @@ providers:
     api_key: ${ANTHROPIC_API_KEY}
     model: claude-opus-4-5
 
-  - name: bedrock
-    type: bedrock
-    region: ${AWS_REGION_NAME}
-    access_key: ${AWS_ACCESS_KEY_ID}
-    secret_key: ${AWS_SECRET_ACCESS_KEY}
-    model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
-    # ⚠️ 2026-09-29 probe: SigV4 "signature we calculated does not match the
-    # signature you provided" — AWS_SECRET_ACCESS_KEY is wrong or rotated.
-    # Re-issue credentials before expecting Bedrock to serve traffic.
-
-  - name: bedrock-haiku
-    type: bedrock
-    region: ${AWS_REGION_NAME}
-    access_key: ${AWS_ACCESS_KEY_ID}
-    secret_key: ${AWS_SECRET_ACCESS_KEY}
-    model: us.anthropic.claude-haiku-4-5-20251001-v1:0
-    # ⚠️ same SigV4 signature failure as `bedrock` above.
+  # ── Amazon Bedrock: DISABLED 2026-09-29 ────────────────────────────────────
+  # Two independent credential paths were tried and both are rejected by AWS:
+  #   1. SigV4 with ${AWS_ACCESS_KEY_ID}/${AWS_SECRET_ACCESS_KEY}
+  #      -> "The request signature we calculated does not match the signature
+  #         you provided" (probe of both entries, 2026-09-29).
+  #   2. Bedrock API key (bearer token, BedrockAPIKey-*, us-east-1)
+  #      -> HTTP 403 "Please make sure your API Key is valid" on the Converse
+  #         and InvokeModel endpoints, for every model tested (Claude 3 Sonnet,
+  #         3.5 Sonnet/Haiku, Claude 4 Haiku, Nova Lite/Pro, Llama 3.1 70B,
+  #         Mistral Large). The key is likely missing the
+  #         bedrock:CallWithBearerToken IAM grant and/or per-model access.
+  # Bedrock is optional redundancy here, not a dependency: the remaining 13
+  # providers serve all traffic. To re-enable after fixing AWS:
+  #   a) Bedrock console -> Model access -> enable a model
+  #   b) IAM policy: bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream,
+  #      bedrock:CallWithBearerToken on Resource "*"
+  #   c) create a long-lived key (30-90 days; 1-day keys expire too fast)
+  #   d) uncomment the two blocks below and re-add them to fallback_chain
+  #
+  # - name: bedrock
+  #   type: bedrock
+  #   region: ${AWS_REGION_NAME}
+  #   access_key: ${AWS_ACCESS_KEY_ID}
+  #   secret_key: ${AWS_SECRET_ACCESS_KEY}
+  #   model: us.anthropic.claude-sonnet-4-6-20251001-v1:0
+  #
+  # - name: bedrock-haiku
+  #   type: bedrock
+  #   region: ${AWS_REGION_NAME}
+  #   access_key: ${AWS_ACCESS_KEY_ID}
+  #   secret_key: ${AWS_SECRET_ACCESS_KEY}
+  #   model: us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 # Primary provider + fallback order.
 # Order still matters: FallbackChain[0] is the primary provider; the rest are
@@ -132,8 +147,9 @@ providers:
 #   transient  atessa (daily quota), minimax-m3 (provider quota), dahl
 #              (free-tier concurrency), mistral + anyapi (429), gemini
 #              (auto-discovery picks gemini-2.5-pro, not enabled for this key)
-#   broken     bedrock, bedrock-haiku (invalid AWS secret -> SigV4 mismatch)
-fallback_chain: [groq, apmix, aihubmix, dashscope, atessa, minimax-m3, dahl, openrouter, mistral, cohere, gemini, tokenharbor, anyapi, bedrock-haiku, bedrock]
+#   broken     (none — bedrock + bedrock-haiku disabled 2026-09-29, see above)
+# 13 providers, all verified reachable except the documented transient ones.
+fallback_chain: [groq, apmix, aihubmix, dashscope, atessa, minimax-m3, dahl, openrouter, mistral, cohere, gemini, tokenharbor, anyapi]
 
 max_retries: 3
 cooldown_seconds: 60
