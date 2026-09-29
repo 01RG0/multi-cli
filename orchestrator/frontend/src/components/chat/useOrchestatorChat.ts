@@ -255,6 +255,60 @@ const ULTRON_TOOLS = [
     },
   },
   {
+    // Advertised in the system prompt but was never wired up, so every call
+    // came back `{"error":"unknown tool: route_cli_task"}`. Backed by
+    // GET /api/cli/route (handleCLIRoute in dispatch_handlers.go).
+    name: 'route_cli_task',
+    description:
+      'Get the routing recommendation for a task type. Returns the primary CLI agent, ' +
+      'a fallback chain, and which agents are working right now. Call this before ' +
+      'dispatching work to pick the right agent instead of guessing.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_type: {
+          type: 'string',
+          enum: [
+            'general_chat', 'web_research', 'code_generation', 'code_review',
+            'file_editing', 'complex_autonomous', 'browser_automation', 'fast_cheap',
+            'reasoning_heavy', 'deepseek_code', 'scheduling_cron',
+          ],
+        },
+      },
+      required: ['task_type'],
+    },
+  },
+  {
+    // Backs the `get_cli_capabilities` line in the system prompt. The endpoint
+    // returns raw YAML, so it is wrapped in a JSON envelope for the model.
+    name: 'get_cli_capabilities',
+    description:
+      'Get the full capability map of every CLI agent (working / partial / broken) ' +
+      'with commands, supported models and tags. Use this to understand what each ' +
+      'agent can do before routing a task to it.',
+    input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    // Backs the `invoke_cli` line in the system prompt. POST /api/cli/invoke
+    // auto-selects the CLI from task_type when `cli` is omitted.
+    name: 'invoke_cli',
+    description:
+      'Invoke a CLI agent directly and return its output. Use for a quick one-shot ' +
+      'question; use dispatch_task instead when you want a tracked, queued task. ' +
+      'Supported CLIs: agy, kilo, hermes, pi.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        cli:            { type: 'string', enum: ['agy', 'kilo', 'kilocode', 'hermes', 'pi'] },
+        prompt:         { type: 'string', description: 'The instruction for the agent' },
+        task_type:      { type: 'string', description: 'Used to auto-select the CLI when `cli` is omitted' },
+        model_hint:     { type: 'string', description: 'Optional model override' },
+        timeout_seconds:{ type: 'number' },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
     name: 'get_queue_status',
     description: 'Get the current task queue status — running, pending, failed counts.',
     input_schema: { type: 'object' as const, properties: {} },
@@ -739,6 +793,44 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         const r = await fetch(`${BASE}/api/skills`);
         return JSON.stringify(await r.json());
       }
+      case 'route_cli_task': {
+        // Backs the system-prompt line that previously errored with
+        // "unknown tool". GET /api/cli/route returns the primary CLI, the
+        // fallback chain and the list of agents that are up right now.
+        const taskType = (input['task_type'] as string) || 'general_chat';
+        const r = await fetch(`${BASE}/api/cli/route?task=${encodeURIComponent(taskType)}`);
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status} from /api/cli/route` });
+        return capToolResult(JSON.stringify(await r.json()));
+      }
+      case 'get_cli_capabilities': {
+        // Returns raw YAML from the server; wrap it so the model gets one
+        // consistent JSON envelope and cap it to protect the context window.
+        const r = await fetch(`${BASE}/api/cli/capabilities`);
+        if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status} from /api/cli/capabilities` });
+        const yamlText = await r.text();
+        return capToolResult(JSON.stringify({ format: 'yaml', capabilities: yamlText }));
+      }
+      case 'invoke_cli': {
+        // POST /api/cli/invoke auto-selects the CLI from task_type when
+        // `cli` is omitted, and returns {ok, cli, output, latency_ms}.
+        const payload: Record<string, unknown> = {
+          prompt: input['prompt'] ?? '',
+        };
+        if (input['cli']) payload['cli'] = input['cli'];
+        if (input['task_type']) payload['task_type'] = input['task_type'];
+        if (input['model_hint']) payload['model_hint'] = input['model_hint'];
+        if (input['timeout_seconds']) payload['timeout_seconds'] = input['timeout_seconds'];
+        const r = await fetch(`${BASE}/api/cli/invoke`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) {
+          const t = await r.text().catch(() => '');
+          return JSON.stringify({ error: `HTTP ${r.status} from /api/cli/invoke`, detail: t.slice(0, 300) });
+        }
+        return capToolResult(JSON.stringify(await r.json()));
+      }
       case 'get_cli_models': {
         const r = await fetch(`${BASE}/api/cli/models`);
         if (!r.ok) return JSON.stringify({ error: `HTTP ${r.status}` });
@@ -1135,7 +1227,15 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
         return JSON.stringify(await r.json());
       }
       default:
-        return JSON.stringify({ error: `unknown tool: ${name}` });
+        // Return the valid tool names, not just the failure. The agent usually
+        // called a tool the system prompt advertises, so listing the real names
+        // lets it self-correct on the next turn instead of retrying the same
+        // dead name.
+        return JSON.stringify({
+          error: `unknown tool: ${name}`,
+          available_tools: ULTRON_TOOLS.map((t) => t.name),
+          hint: 'Call one of the available_tools above. If none fits, answer directly.',
+        });
     }
   } catch (e) {
     return JSON.stringify({ error: String(e), note: 'backend may not be running or endpoint not wired yet' });
