@@ -92,6 +92,18 @@ providers:
     api_key: ${ALIBABA_API_KEY}
     model: qwen3.8-max
 
+  # Same Alibaba Cloud Model Studio workspace, but through its native
+  # Anthropic-compatible route (/apps/anthropic/v1/messages) instead of the
+  # OpenAI-compat one. Verified 2026-09-29: HTTP 200, and tool calls come back
+  # as real `tool_use` blocks (not JSON-in-a-string), so tool loops are more
+  # reliable than over the OpenAI-compat path. Sits right after `dashscope` in
+  # the chain as a second opinion on the same provider.
+  - name: dashscope-anthropic
+    type: anthropic_compat
+    base_url: ${ALIBABA_ANTHROPIC_URL}
+    api_key: ${ALIBABA_API_KEY}
+    model: qwen3.8-max
+
   - name: gemini
     type: openai_compat
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
@@ -148,8 +160,10 @@ providers:
 #              (free-tier concurrency), mistral + anyapi (429), gemini
 #              (auto-discovery picks gemini-2.5-pro, not enabled for this key)
 #   broken     (none — bedrock + bedrock-haiku disabled 2026-09-29, see above)
-# 13 providers, all verified reachable except the documented transient ones.
-fallback_chain: [groq, apmix, aihubmix, dashscope, atessa, minimax-m3, dahl, openrouter, mistral, cohere, gemini, tokenharbor, anyapi]
+# 14 providers, all verified reachable except the documented transient ones.
+# 2026-09-29: added dashscope-anthropic (same Alibaba workspace, native
+# /apps/anthropic route) for reliable tool_use block handling.
+fallback_chain: [groq, apmix, aihubmix, dashscope, dashscope-anthropic, atessa, minimax-m3, dahl, openrouter, mistral, cohere, gemini, tokenharbor, anyapi]
 
 max_retries: 3
 cooldown_seconds: 60
